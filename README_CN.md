@@ -1,259 +1,196 @@
 <img src="docs/icon-readme.png" width="32" height="32" alt="CodePilot" style="vertical-align: middle; margin-right: 8px;" /> CodePilot
 ===
 
-**Claude Code 的桌面 GUI 客户端** -- 通过可视化界面进行对话、编码和项目管理，无需在终端中操作。
-
-[English](./README.md) | [日本語](./README_JA.md)
+**Claude Code 的统一桌面客户端** -- 多 Provider 支持、MCP 扩展、自定义技能、跨平台 Bridge，以及理解你项目的助手工作区。
 
 [![GitHub release](https://img.shields.io/github/v/release/op7418/CodePilot)](https://github.com/op7418/CodePilot/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/op7418/CodePilot/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-### 加入用户群
-
-<img src="docs/wechat-group-qr.png" width="240" alt="微信用户群二维码" />
-
-扫描二维码加入微信用户群，交流使用心得、反馈问题和获取最新动态。
-
----
-
-## 功能特性
-
-- **实时对话编码** -- 流式接收 Claude 的响应，支持完整的 Markdown 渲染、语法高亮代码块和工具调用可视化
-- **会话管理** -- 创建、重命名、归档和恢复聊天会话。所有对话本地持久化存储在 SQLite 中，重启不丢失
-- **项目感知上下文** -- 为每个会话选择工作目录。右侧面板实时展示文件树和文件预览，随时了解 Claude 正在查看的内容
-- **可调节面板宽度** -- 拖拽聊天列表和右侧面板的边缘调整宽度，偏好设置跨会话保存
-- **文件和图片附件** -- 在聊天输入框直接附加文件和图片。图片以多模态视觉内容发送给 Claude 进行分析
-- **权限控制** -- 逐项审批、拒绝或自动允许工具使用，可选择不同的权限模式
-- **多种交互模式** -- 在 *Code*、*Plan* 和 *Ask* 模式之间切换，控制 Claude 在每个会话中的行为方式
-- **模型切换** -- 在对话中随时切换 Claude 模型（Opus、Sonnet、Haiku）
-- **MCP 服务器管理** -- 直接在扩展页面添加、配置和移除 Model Context Protocol 服务器。支持 `stdio`、`sse` 和 `http` 传输类型
-- **自定义技能** -- 定义可复用的提示词技能（全局或项目级别），在聊天中作为斜杠命令调用
-- **设置编辑器** -- 可视化和 JSON 编辑器管理 `~/.claude/settings.json`，包括权限和环境变量配置
-- **Token 用量追踪** -- 每次助手回复后查看输入/输出 Token 数量和预估费用
-- **自动更新** -- 已签名版本支持应用内自动下载和安装更新；未签名本地构建仅支持手动下载
-- **深色/浅色主题** -- 导航栏一键切换主题
-- **斜杠命令** -- 内置 `/help`、`/clear`、`/cost`、`/compact`、`/doctor`、`/review` 等命令
-- **Electron 打包** -- 桌面应用，隐藏标题栏，内置 Next.js 服务器，优雅关闭进程，自动端口分配
-
----
-
-## 截图
+[English](./README.md) | [日本語](./README_JA.md)
 
 ![CodePilot](docs/screenshot.png)
 
 ---
 
-## 环境要求
+[下载](#平台与安装) | [快速开始](#快速开始) | [文档](#文档) | [贡献](#贡献) | [社区](#社区)
 
-| 要求 | 最低版本 |
-|------|---------|
-| **Node.js** | 18+ |
-| **Claude Code CLI** | 已安装并完成认证（`claude --version` 可正常运行） |
-| **npm** | 9+（Node 18 自带） |
+---
 
-> **注意**：CodePilot 底层调用 Claude Code Agent SDK。请确保 `claude` 命令在 `PATH` 中可用，并且已完成认证（`claude login`）。
+## 为什么选择 CodePilot
+
+**多 Provider，统一界面。** 连接 Anthropic、OpenRouter、Bedrock、Vertex 或任何自定义端点。对话中随时切换 Provider 和模型，不丢失上下文。
+
+**MCP + Skills 扩展体系。** 添加 MCP 服务器（stdio / sse / http），支持运行时状态监控。定义可复用的提示词技能 -- 全局或项目级 -- 作为斜杠命令调用。从 skills.sh 浏览和安装社区技能。
+
+**随时随地控制。** Bridge 连接 CodePilot 到 Telegram、飞书、Discord 和 QQ。在手机上发消息，在桌面上收回复。
+
+**了解你项目的助手。** .assistant 工作区存储人设文件、Onboarding 流程、每日签到和持久记忆。Claude 会随时间适应你的项目惯例。
+
+**为日常使用而建。** 暂停、恢复和回退会话到任意检查点。分屏并排运行两个对话。追踪 Token 用量和费用。导入 CLI 会话历史。深浅主题一键切换。
 
 ---
 
 ## 快速开始
 
+### 路径 A：下载发布版（大多数用户）
+
+1. 安装 Claude Code CLI：`npm install -g @anthropic-ai/claude-code`
+2. 认证：`claude login`
+3. 从 [Releases](https://github.com/op7418/CodePilot/releases) 页面下载对应平台的安装包
+4. 启动 CodePilot
+
+### 路径 B：源码构建（开发者）
+
+| 前置条件 | 最低版本 |
+|---|---|
+| Node.js | 18+ |
+| Claude Code CLI | 已安装并完成认证 |
+| npm | 9+（Node 18 自带） |
+
 ```bash
-# 克隆仓库
 git clone https://github.com/op7418/CodePilot.git
 cd CodePilot
-
-# 安装依赖
 npm install
-
-# 以开发模式启动（浏览器）
-npm run dev
-
-# -- 或者启动完整的 Electron 桌面应用 --
-node scripts/build-electron.mjs   # 编译 Electron 主进程（首次运行前需要）
-npm run electron:dev
+npm run dev              # 浏览器模式，访问 http://localhost:3000
+# -- 或者 --
+npm run electron:dev     # 完整桌面应用
 ```
 
-然后打开 [http://localhost:3000](http://localhost:3000)（浏览器模式）或等待 Electron 窗口弹出。
+---
+
+## 首次使用
+
+1. **认证 Claude** -- 如果还没有，先在终端运行 `claude login`。
+2. **配置 Provider** -- 打开 设置 > Providers，添加 API Key 或使用 CLI 默认认证。
+3. **创建对话** -- 选择工作目录、交互模式（Code / Plan / Ask）和模型。
+4. **设置 Assistant Workspace**（可选）-- 在 .assistant 目录下开启 Onboarding、每日签到和人设文件。
+5. **添加 MCP 服务器**（可选）-- 前往扩展页面连接外部工具和服务。
 
 ---
 
-## 下载
+## 核心能力
 
-预编译版本可在 [Releases](https://github.com/op7418/CodePilot/releases) 页面下载。所有平台的安装包均由 GitHub Actions 自动构建发布。
+### 对话与编码
 
-### 支持平台
+| 能力 | 说明 |
+|---|---|
+| 交互模式 | Code / Plan / Ask |
+| 推理力度 | Low / Medium / High / Max + Thinking 模式 |
+| 权限控制 | Default / Full Access，逐项审批 |
+| 会话控制 | 暂停、恢复、回退到检查点、归档 |
+| 模型切换 | 对话中随时切换模型 |
+| 分屏 | 并排双会话 |
+| 附件 | 文件和图片，支持多模态视觉 |
+| 斜杠命令 | /help /clear /cost /compact /doctor /review 等 |
 
-- **macOS** -- 支持 arm64（Apple Silicon）和 x64（Intel）架构的 `.dmg` 安装包
-- **Windows** -- NSIS 安装程序（`.exe`），包含 x64 + arm64
-- **Linux** -- 支持 x64 和 arm64 架构，提供 `.AppImage`、`.deb` 和 `.rpm` 格式
+### 扩展与集成
+
+| 能力 | 说明 |
+|---|---|
+| Provider | Anthropic / OpenRouter / Bedrock / Vertex / 自定义端点 |
+| MCP 服务器 | stdio / sse / http，运行时状态监控 |
+| Skills | 自定义 / 项目 / 全局技能，skills.sh 市场 |
+| Bridge | Telegram / 飞书 / Discord / QQ 远程控制 |
+| CLI 导入 | 导入 Claude Code CLI .jsonl 会话历史 |
+| 图片生成 | Gemini / Anthropic 生图、批量任务、画廊 |
+
+### 数据与工作区
+
+| 能力 | 说明 |
+|---|---|
+| Assistant Workspace | .assistant 目录、人设、Onboarding、签到、记忆 |
+| 文件浏览 | 项目文件树、语法高亮预览 |
+| 用量分析 | Token 计数、费用估算、日用量图表 |
+| 本地存储 | SQLite（WAL 模式），数据全部在本地 |
+| 国际化 | 英文 + 中文 |
+| 主题 | 深色 / 浅色，一键切换 |
 
 ---
 
-## 安装问题排查
+## 平台与安装
 
-CodePilot 尚未进行代码签名，因此操作系统在首次打开时会显示安全警告。
+| 平台 | 格式 | 架构 |
+|---|---|---|
+| macOS | .dmg | arm64 (Apple Silicon) + x64 (Intel) |
+| Windows | .exe (NSIS) | x64 + arm64 |
+| Linux | .AppImage / .deb / .rpm | x64 + arm64 |
 
-### macOS
+从 [Releases](https://github.com/op7418/CodePilot/releases) 页面下载。
 
-你会看到一个对话框提示 **"无法验证开发者"** 或 **"Apple 无法检查其是否包含恶意软件"**。
+CodePilot 尚未进行代码签名，首次启动时操作系统会显示安全警告。
 
-**方案一 -- 右键打开**
+<details>
+<summary>macOS："无法验证开发者" / "Apple 无法检查其是否包含恶意软件"</summary>
 
-1. 在访达中右键（或 Control-点击）`CodePilot.app`
-2. 从右键菜单中选择 **打开**
-3. 在确认对话框中点击 **打开**
+**方案一** -- 在访达中右键 `CodePilot.app` > 打开 > 确认。
 
-**方案二 -- 系统设置**
+**方案二** -- 系统设置 > 隐私与安全性 > 滚动到安全性 > 点击「仍要打开」。
 
-1. 打开 **系统设置** > **隐私与安全性**
-2. 向下滚动到 **安全性** 部分
-3. 你会看到关于 CodePilot 被阻止的提示，点击 **仍要打开**
-4. 如有提示则输入密码验证，然后启动应用
-
-**方案三 -- 终端命令**
-
+**方案三** -- 在终端运行：
 ```bash
 xattr -cr /Applications/CodePilot.app
 ```
+</details>
 
-此命令会移除隔离属性，macOS 将不再阻止该应用。
+<details>
+<summary>Windows：SmartScreen 阻止安装</summary>
 
-### Windows
+**方案一** -- 在 SmartScreen 对话框中点击「更多信息」，然后点击「仍要运行」。
 
-Windows SmartScreen 会阻止安装程序或可执行文件。
-
-**方案一 -- 仍要运行**
-
-1. 在 SmartScreen 对话框中，点击 **更多信息**
-2. 点击 **仍要运行**
-
-**方案二 -- 关闭应用安装控制**
-
-1. 打开 **设置** > **应用** > **高级应用设置**
-2. 将 **应用安装控制**（或"选择获取应用的位置"）切换为允许任何来源
+**方案二** -- 设置 > 应用 > 高级应用设置 > 将应用安装控制设为允许任何来源。
+</details>
 
 ---
 
-## 技术栈
+## 文档
 
-| 层级 | 技术 |
-|------|------|
-| 框架 | [Next.js 16](https://nextjs.org/)（App Router） |
-| 桌面壳 | [Electron 40](https://www.electronjs.org/) |
-| UI 组件 | [Radix UI](https://www.radix-ui.com/) + [shadcn/ui](https://ui.shadcn.com/) |
-| 样式 | [Tailwind CSS 4](https://tailwindcss.com/) |
-| 动画 | [Motion](https://motion.dev/)（Framer Motion） |
-| AI 集成 | [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) |
-| 数据库 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)（嵌入式，用户独立） |
-| Markdown | react-markdown + remark-gfm + rehype-raw + [Shiki](https://shiki.style/) |
-| 流式传输 | [Vercel AI SDK](https://sdk.vercel.ai/) + Server-Sent Events |
-| 图标 | [Hugeicons](https://hugeicons.com/) + [Lucide](https://lucide.dev/) |
-| 测试 | [Playwright](https://playwright.dev/) |
-| CI/CD | [GitHub Actions](https://github.com/features/actions)（自动构建 + tag 发版） |
-| 构建打包 | electron-builder + esbuild |
+- [ARCHITECTURE.md](./ARCHITECTURE.md) -- 架构、技术栈、目录结构、数据流
+- [docs/handover/](./docs/handover/) -- 设计决策、交接文档
+- [docs/exec-plans/](./docs/exec-plans/) -- 执行计划、技术债务
 
 ---
 
-## 项目结构
+## 社区
 
-```
-codepilot/
-├── .github/workflows/      # CI/CD：多平台构建和自动发版
-├── electron/                # Electron 主进程和预加载脚本
-│   ├── main.ts              # 窗口创建、内嵌服务器生命周期管理
-│   └── preload.ts           # Context bridge
-├── src/
-│   ├── app/                 # Next.js App Router 页面和 API 路由
-│   │   ├── chat/            # 新建对话页面和 [id] 会话页面
-│   │   ├── extensions/      # 技能 + MCP 服务器管理
-│   │   ├── settings/        # 设置编辑器
-│   │   └── api/             # REST + SSE 接口
-│   │       ├── chat/        # 会话、消息、流式传输、权限
-│   │       ├── files/       # 文件树和预览
-│   │       ├── plugins/     # 插件和 MCP 增删改查
-│   │       ├── settings/    # 设置读写
-│   │       ├── skills/      # 技能增删改查
-│   │       └── tasks/       # 任务追踪
-│   ├── components/
-│   │   ├── ai-elements/     # 消息气泡、代码块、工具调用等
-│   │   ├── chat/            # ChatView、MessageList、MessageInput、流式消息
-│   │   ├── layout/          # AppShell、NavRail、ResizeHandle、RightPanel
-│   │   ├── plugins/         # MCP 服务器列表和编辑器
-│   │   ├── project/         # FileTree、FilePreview、TaskList
-│   │   ├── skills/          # SkillsManager、SkillEditor
-│   │   └── ui/              # 基于 Radix 的基础组件（button、dialog、tabs...）
-│   ├── hooks/               # 自定义 React Hooks（usePanel 等）
-│   ├── lib/                 # 核心逻辑
-│   │   ├── claude-client.ts # Agent SDK 流式封装
-│   │   ├── db.ts            # SQLite 数据库、迁移、CRUD
-│   │   ├── files.ts         # 文件系统工具函数
-│   │   ├── permission-registry.ts  # 权限请求/响应桥接
-│   │   └── utils.ts         # 通用工具函数
-│   └── types/               # TypeScript 接口和 API 类型定义
-├── electron-builder.yml     # 打包配置
-├── package.json
-└── tsconfig.json
-```
+<img src="docs/wechat-group-qr.png" width="240" alt="微信用户群二维码" />
 
----
+扫描二维码加入微信用户群，交流使用心得、反馈问题和获取最新动态。
 
-## 开发
-
-```bash
-# 仅运行 Next.js 开发服务器（在浏览器中打开）
-npm run dev
-
-# 编译 Electron 主进程（首次运行前需要执行）
-node scripts/build-electron.mjs
-
-# 运行完整的 Electron 桌面应用（开发模式）
-# （先启动 Next.js，等待就绪后打开 Electron）
-npm run electron:dev
-
-# 生产构建（Next.js standalone）
-npm run build
-
-# 构建 Electron 可分发包 + Next.js
-npm run electron:build
-
-# 打包特定平台
-npm run electron:pack:mac     # macOS DMG（arm64 + x64）
-npm run electron:pack:win     # Windows NSIS 安装包
-npm run electron:pack:linux   # Linux AppImage、deb、rpm
-```
-
-### CI/CD
-
-项目使用 GitHub Actions 自动构建。推送 `v*` tag 会自动触发全平台构建并创建 GitHub Release：
-
-```bash
-git tag v0.8.1
-git push origin v0.8.1
-# CI 自动构建 Windows + macOS + Linux，然后发布 Release
-```
-
-也可以在 Actions 页面手动触发单个平台的构建。
-
-### 说明
-
-- Electron 主进程（`electron/main.ts`）会 fork Next.js standalone 服务器，通过 `127.0.0.1` 上的随机可用端口进行连接
-- 聊天数据存储在 `~/.codepilot/codepilot.db`（开发模式下为 `./data/`）
-- 应用使用 SQLite WAL 模式，并发读取性能优秀
+- [GitHub Issues](https://github.com/op7418/CodePilot/issues) -- Bug 反馈和功能建议
+- [GitHub Discussions](https://github.com/op7418/CodePilot/discussions) -- 提问和讨论
 
 ---
 
 ## 贡献
 
-欢迎贡献代码。开始之前：
-
 1. Fork 本仓库并创建功能分支
-2. 使用 `npm install` 安装依赖
-3. 运行 `npm run electron:dev` 在本地测试你的更改
-4. 确保 `npm run lint` 通过后再提交 Pull Request
-5. 向 `main` 分支提交 PR，并附上清晰的变更说明
+2. `npm install` 然后 `npm run electron:dev` 本地开发
+3. 提交 PR 前运行 `npm run test`
+4. 向 `main` 提交 PR，附上清晰的变更说明
 
 请保持 PR 聚焦 -- 每个 PR 只包含一个功能或修复。
+
+<details>
+<summary>开发命令</summary>
+
+```bash
+npm run dev                    # Next.js 开发服务器（浏览器）
+npm run electron:dev           # 完整 Electron 应用（开发模式）
+npm run build                  # 生产构建
+npm run electron:build         # 构建 Electron 可分发包
+npm run electron:pack:mac      # macOS DMG（arm64 + x64）
+npm run electron:pack:win      # Windows NSIS 安装包
+npm run electron:pack:linux    # Linux AppImage、deb、rpm
+```
+
+**CI/CD：** 推送 `v*` tag 会自动触发全平台构建并创建 GitHub Release。
+
+**说明：**
+- Electron 在 `127.0.0.1` 上 fork Next.js standalone 服务器，使用随机可用端口
+- 聊天数据存储在 `~/.codepilot/codepilot.db`（开发模式：`./data/`）
+- SQLite 使用 WAL 模式，并发读取性能优秀
+</details>
 
 ---
 
