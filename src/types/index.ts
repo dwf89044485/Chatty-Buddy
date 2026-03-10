@@ -52,6 +52,12 @@ export interface FilePreview {
 }
 
 // ==========================================
+// Skill / Command Types
+// ==========================================
+
+export type SkillKind = 'agent_skill' | 'slash_command' | 'sdk_command' | 'codepilot_command';
+
+// ==========================================
 // Task Types
 // ==========================================
 
@@ -452,7 +458,7 @@ export interface PluginInfo {
 }
 
 export interface MCPServerConfig {
-  command: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
   type?: 'stdio' | 'sse' | 'http';

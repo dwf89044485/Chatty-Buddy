@@ -98,7 +98,7 @@ export default function NewChatPage() {
   }, [pendingPermission, setPendingApprovalSessionId]);
 
   const sendFirstMessage = useCallback(
-    async (content: string, _files?: unknown, systemPromptAppend?: string) => {
+    async (content: string, _files?: unknown, systemPromptAppend?: string, displayOverride?: string) => {
       if (isStreaming) return;
 
       // Require a project directory before sending
@@ -152,12 +152,12 @@ export default function NewChatPage() {
         // Notify ChatListPanel to refresh immediately
         window.dispatchEvent(new CustomEvent('session-created'));
 
-        // Add user message to UI
+        // Add user message to UI — use displayOverride for chat bubble if provided
         const userMessage: Message = {
           id: 'temp-' + Date.now(),
           session_id: session.id,
           role: 'user',
-          content,
+          content: displayOverride || content,
           created_at: new Date().toISOString(),
           token_usage: null,
         };
@@ -181,6 +181,7 @@ export default function NewChatPage() {
             ...(systemPromptAppend ? { systemPromptAppend } : {}),
             ...(selectedEffort ? { effort: selectedEffort } : {}),
             ...(thinkingConfig ? { thinking: thinkingConfig } : {}),
+            ...(displayOverride ? { displayOverride } : {}),
           }),
           signal: controller.signal,
         });

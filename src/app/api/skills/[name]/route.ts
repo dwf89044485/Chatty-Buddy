@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
+import type { SkillKind } from "@/types";
 
 function getGlobalCommandsDir(): string {
   return path.join(os.homedir(), ".claude", "commands");
@@ -281,6 +282,8 @@ export async function GET(
         : firstLine || `Skill: /${name}`;
     }
 
+    const kind: SkillKind = found.filePath.endsWith("SKILL.md") ? "agent_skill" : "slash_command";
+
     return NextResponse.json({
       skill: {
         name,
@@ -289,6 +292,7 @@ export async function GET(
         source: found.source,
         installedSource: found.installedSource,
         filePath: found.filePath,
+        kind,
       },
     });
   } catch (error) {
@@ -342,6 +346,8 @@ export async function PUT(
       ? firstLine.replace(/^#+\s*/, "")
       : firstLine || `Skill: /${name}`;
 
+    const kind: SkillKind = found.filePath.endsWith("SKILL.md") ? "agent_skill" : "slash_command";
+
     return NextResponse.json({
       skill: {
         name,
@@ -350,6 +356,7 @@ export async function PUT(
         source: found.source,
         installedSource: found.installedSource,
         filePath: found.filePath,
+        kind,
       },
     });
   } catch (error) {

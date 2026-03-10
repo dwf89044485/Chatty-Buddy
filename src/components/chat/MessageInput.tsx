@@ -33,7 +33,7 @@ import {
   usePromptInputAttachments,
 } from '@/components/ai-elements/prompt-input';
 import type { ChatStatus } from 'ai';
-import type { FileAttachment, ProviderModelGroup } from '@/types';
+import type { FileAttachment, ProviderModelGroup, SkillKind } from '@/types';
 import { nanoid } from 'nanoid';
 import { SlashCommandButton } from './SlashCommandButton';
 import { useImageGen } from '@/hooks/useImageGen';
@@ -101,6 +101,8 @@ interface MessageInputProps {
   /** Effort selection lifted to parent for inclusion in the stream chain */
   effort?: string;
   onEffortChange?: (effort: string | undefined) => void;
+  /** SDK init metadata — when available, used to validate command/skill availability */
+  sdkInitMeta?: { tools?: unknown; slash_commands?: unknown; skills?: unknown } | null;
 }
 
 interface PopoverItem {
@@ -111,7 +113,8 @@ interface PopoverItem {
   builtIn?: boolean;
   immediate?: boolean;
   installedSource?: "agents" | "claude";
-  source?: "global" | "project" | "plugin" | "installed";
+  source?: "global" | "project" | "plugin" | "installed" | "sdk";
+  kind?: SkillKind;
   icon?: typeof CommandLineIcon;
 }
 
@@ -119,7 +122,7 @@ interface CommandBadge {
   command: string;
   label: string;
   description: string;
-  isSkill: boolean;
+  kind: SkillKind;
   installedSource?: "agents" | "claude";
 }
 
@@ -137,12 +140,12 @@ const BUILT_IN_COMMANDS: PopoverItem[] = [
   { label: 'help', value: '/help', description: 'Show available commands and tips', descriptionKey: 'messageInput.helpDesc', builtIn: true, immediate: true, icon: HelpCircleIcon },
   { label: 'clear', value: '/clear', description: 'Clear conversation history', descriptionKey: 'messageInput.clearDesc', builtIn: true, immediate: true, icon: Delete02Icon },
   { label: 'cost', value: '/cost', description: 'Show token usage statistics', descriptionKey: 'messageInput.costDesc', builtIn: true, immediate: true, icon: Coins01Icon },
-  { label: 'compact', value: '/compact', description: 'Compress conversation context', descriptionKey: 'messageInput.compactDesc', builtIn: true, icon: FileZipIcon },
-  { label: 'doctor', value: '/doctor', description: 'Diagnose project health', descriptionKey: 'messageInput.doctorDesc', builtIn: true, icon: Stethoscope02Icon },
-  { label: 'init', value: '/init', description: 'Initialize CLAUDE.md for project', descriptionKey: 'messageInput.initDesc', builtIn: true, icon: FileEditIcon },
-  { label: 'review', value: '/review', description: 'Review code quality', descriptionKey: 'messageInput.reviewDesc', builtIn: true, icon: SearchList01Icon },
-  { label: 'terminal-setup', value: '/terminal-setup', description: 'Configure terminal settings', descriptionKey: 'messageInput.terminalSetupDesc', builtIn: true, icon: CommandLineIcon },
-  { label: 'memory', value: '/memory', description: 'Edit project memory file', descriptionKey: 'messageInput.memoryDesc', builtIn: true, icon: BrainIcon },
+  { label: 'compact', value: '/compact', description: 'Compress conversation context', descriptionKey: 'messageInput.compactDesc', builtIn: true, kind: 'sdk_command', icon: FileZipIcon },
+  { label: 'doctor', value: '/doctor', description: 'Diagnose project health', descriptionKey: 'messageInput.doctorDesc', builtIn: true, kind: 'codepilot_command', icon: Stethoscope02Icon },
+  { label: 'init', value: '/init', description: 'Initialize CLAUDE.md for project', descriptionKey: 'messageInput.initDesc', builtIn: true, kind: 'sdk_command', icon: FileEditIcon },
+  { label: 'review', value: '/review', description: 'Review code quality', descriptionKey: 'messageInput.reviewDesc', builtIn: true, kind: 'sdk_command', icon: SearchList01Icon },
+  { label: 'terminal-setup', value: '/terminal-setup', description: 'Configure terminal settings', descriptionKey: 'messageInput.terminalSetupDesc', builtIn: true, kind: 'codepilot_command', icon: CommandLineIcon },
+  { label: 'memory', value: '/memory', description: 'Edit project memory file', descriptionKey: 'messageInput.memoryDesc', builtIn: true, kind: 'codepilot_command', icon: BrainIcon },
 ];
 
 interface ModeOption {
@@ -380,6 +383,7 @@ export function MessageInput({
   onAssistantTrigger,
   effort: effortProp,
   onEffortChange,
+  sdkInitMeta,
 }: MessageInputProps) {
   const { t } = useTranslation();
   const imageGen = useImageGen();
@@ -489,17 +493,70 @@ export function MessageInput({
         const data = await res.json();
         const skills = data.skills || [];
         apiSkills = skills
-          .map((s: { name: string; description: string; source?: "global" | "project" | "plugin" | "installed"; installedSource?: "agents" | "claude" }) => ({
+          .map((s: { name: string; description: string; source?: "global" | "project" | "plugin" | "installed" | "sdk"; kind?: SkillKind; installedSource?: "agents" | "claude" }) => ({
             label: s.name,
             value: `/${s.name}`,
             description: s.description || "",
             builtIn: false,
             installedSource: s.installedSource,
             source: s.source,
+            kind: s.kind || 'slash_command',
           }));
       }
     } catch {
       // API not available - just use built-in commands
+    }
+
+    // When SDK init metadata is available, use it as the truth source:
+    // 1. Filter out filesystem-scanned items that the SDK session didn't actually load
+    // 2. Add any SDK-reported commands/skills missing from the filesystem scan
+    // Note: SDK system:init reports slash_commands and skills as string[] (names only)
+    if (sdkInitMeta) {
+      const rawCmds = sdkInitMeta.slash_commands;
+      const rawSkills = sdkInitMeta.skills;
+      const sdkCommandNames = new Set(
+        Array.isArray(rawCmds) ? rawCmds.map(c => typeof c === 'string' ? c : (c as { name?: string })?.name).filter(Boolean) as string[] : []
+      );
+      const sdkSkillNames = new Set(
+        Array.isArray(rawSkills) ? rawSkills.map(s => typeof s === 'string' ? s : (s as { name?: string })?.name).filter(Boolean) as string[] : []
+      );
+
+      // Only filter if SDK actually reported capabilities (non-empty arrays)
+      if (sdkCommandNames.size > 0 || sdkSkillNames.size > 0) {
+        apiSkills = apiSkills.filter(item => {
+          if (item.kind === 'agent_skill') return sdkSkillNames.has(item.label);
+          return sdkCommandNames.has(item.label);
+        });
+      }
+
+      const existingNames = new Set(apiSkills.map(s => s.label));
+
+      // Add SDK-reported commands not found in filesystem scan
+      for (const cmdName of sdkCommandNames) {
+        if (!existingNames.has(cmdName)) {
+          apiSkills.push({
+            label: cmdName,
+            value: `/${cmdName}`,
+            description: `SDK command: /${cmdName}`,
+            builtIn: false,
+            source: 'sdk',
+            kind: 'sdk_command',
+          });
+        }
+      }
+
+      // Add SDK-reported skills not found in filesystem scan
+      for (const skillName of sdkSkillNames) {
+        if (!existingNames.has(skillName)) {
+          apiSkills.push({
+            label: skillName,
+            value: `/${skillName}`,
+            description: `Skill: /${skillName}`,
+            builtIn: false,
+            kind: 'agent_skill',
+          });
+        }
+      }
     }
 
     // Deduplicate: remove API skills that share a name with built-in commands
@@ -507,7 +564,7 @@ export function MessageInput({
     const uniqueSkills = apiSkills.filter(s => !builtInNames.has(s.label));
 
     return [...BUILT_IN_COMMANDS, ...uniqueSkills];
-  }, [workingDirectory]);
+  }, [workingDirectory, sdkInitMeta]);
 
   // Close popover
   const closePopover = useCallback(() => {
@@ -553,7 +610,7 @@ export function MessageInput({
         command: item.value,
         label: item.label,
         description: item.description || '',
-        isSkill: !item.builtIn,
+        kind: item.kind || 'slash_command',
         installedSource: item.installedSource,
       });
       setInputValue('');
@@ -682,41 +739,49 @@ export function MessageInput({
       return;
     }
 
-    // If badge is active, expand the command/skill and send
+    // If badge is active, dispatch by kind
     if (badge && !isStreaming) {
-      let expandedPrompt = '';
-
-      if (badge.isSkill) {
-        // Fetch skill content from API
-        try {
-          const detailParams = new URLSearchParams();
-          if (badge.installedSource) detailParams.set("source", badge.installedSource);
-          if (workingDirectory) detailParams.set("cwd", workingDirectory);
-          const qs = detailParams.toString();
-          const res = await fetch(
-            `/api/skills/${encodeURIComponent(badge.label)}${qs ? `?${qs}` : ""}`
-          );
-          if (res.ok) {
-            const data = await res.json();
-            expandedPrompt = data.skill?.content || '';
-          }
-        } catch {
-          // Fallback: use command name
-        }
-      } else {
-        // Built-in prompt command expansion
-        expandedPrompt = COMMAND_PROMPTS[badge.command] || '';
-      }
-
-      const finalPrompt = content
-        ? `${expandedPrompt}\n\nUser context: ${content}`
-        : expandedPrompt || badge.command;
-
       const files = await convertFiles();
-      setBadge(null);
-      setInputValue('');
-      onSend(finalPrompt, files.length > 0 ? files : undefined);
-      return;
+      const displayLabel = `/${badge.label}`;
+
+      switch (badge.kind) {
+        case 'agent_skill': {
+          // Agent skills: SDK loads SKILL.md natively from filesystem.
+          // Always include skill name so Claude knows which skill was selected.
+          // User context is appended after the skill reference.
+          const agentPrompt = content
+            ? `Use the ${badge.label} skill. User context: ${content}`
+            : `Please use the ${badge.label} skill.`;
+          setBadge(null);
+          setInputValue('');
+          onSend(agentPrompt, files.length > 0 ? files : undefined, undefined, displayLabel);
+          return;
+        }
+
+        case 'slash_command':
+        case 'sdk_command': {
+          // Slash commands & SDK commands: send "/{command} {context}" as-is for SDK to handle
+          const slashPrompt = content
+            ? `${badge.command} ${content}`
+            : badge.command;
+          setBadge(null);
+          setInputValue('');
+          onSend(slashPrompt, files.length > 0 ? files : undefined, undefined, displayLabel);
+          return;
+        }
+
+        case 'codepilot_command': {
+          // CodePilot-specific commands: expand via COMMAND_PROMPTS, show /command in bubble
+          const expandedPrompt = COMMAND_PROMPTS[badge.command] || '';
+          const finalPrompt = content
+            ? `${expandedPrompt}\n\nUser context: ${content}`
+            : expandedPrompt || badge.command;
+          setBadge(null);
+          setInputValue('');
+          onSend(finalPrompt, files.length > 0 ? files : undefined, undefined, displayLabel);
+          return;
+        }
+      }
     }
 
     const files = await convertFiles();
@@ -738,20 +803,20 @@ export function MessageInput({
           command: cmd.value,
           label: cmd.label,
           description: cmd.description || '',
-          isSkill: false,
+          kind: cmd.kind || 'sdk_command',
         });
         setInputValue('');
         return;
       }
 
-      // Not a built-in command — treat as a skill
+      // Not a built-in command — default to slash_command (SDK will handle)
       const skillName = content.slice(1);
       if (skillName) {
         setBadge({
           command: content,
           label: skillName,
           description: '',
-          isSkill: true,
+          kind: 'slash_command',
         });
         setInputValue('');
         return;
@@ -972,8 +1037,8 @@ export function MessageInput({
           {/* Popover */}
           {popoverMode && (allDisplayedItems.length > 0 || aiSearchLoading) && (() => {
             const builtInItems = filteredItems.filter(item => item.builtIn);
-            const projectItems = filteredItems.filter(item => !item.builtIn && item.source === 'project');
-            const skillItems = filteredItems.filter(item => !item.builtIn && item.source !== 'project');
+            const slashCommandItems = filteredItems.filter(item => !item.builtIn && item.kind !== 'agent_skill');
+            const agentSkillItems = filteredItems.filter(item => !item.builtIn && item.kind === 'agent_skill');
             let globalIdx = 0;
 
             const renderItem = (item: PopoverItem, idx: number) => (
@@ -991,7 +1056,9 @@ export function MessageInput({
                   <HugeiconsIcon icon={AtIcon} className="h-4 w-4 shrink-0 text-muted-foreground" />
                 ) : item.builtIn && item.icon ? (
                   <HugeiconsIcon icon={item.icon} className="h-4 w-4 shrink-0 text-muted-foreground" />
-                ) : !item.builtIn && item.source === 'project' ? (
+                ) : item.kind === 'agent_skill' ? (
+                  <HugeiconsIcon icon={BrainIcon} className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : item.kind === 'slash_command' ? (
                   <HugeiconsIcon icon={FileEditIcon} className="h-4 w-4 shrink-0 text-muted-foreground" />
                 ) : !item.builtIn ? (
                   <HugeiconsIcon icon={GlobalIcon} className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1077,23 +1144,23 @@ export function MessageInput({
                           })}
                         </>
                       )}
-                      {projectItems.length > 0 && (
+                      {slashCommandItems.length > 0 && (
                         <>
                           <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                            Project Commands
+                            Slash Commands
                           </div>
-                          {projectItems.map((item) => {
+                          {slashCommandItems.map((item) => {
                             const idx = globalIdx++;
                             return renderItem(item, idx);
                           })}
                         </>
                       )}
-                      {skillItems.length > 0 && (
+                      {agentSkillItems.length > 0 && (
                         <>
                           <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                            Skills
+                            Agent Skills
                           </div>
-                          {skillItems.map((item) => {
+                          {agentSkillItems.map((item) => {
                             const idx = globalIdx++;
                             return renderItem(item, idx);
                           })}

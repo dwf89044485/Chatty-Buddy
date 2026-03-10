@@ -27,6 +27,7 @@ export interface SSECallbacks {
   onRewindPoint: (sdkUserMessageId: string) => void;
   onKeepAlive: () => void;
   onError: (accumulated: string) => void;
+  onInitMeta?: (meta: { tools?: unknown; slash_commands?: unknown; skills?: unknown }) => void;
 }
 
 /**
@@ -91,6 +92,11 @@ function handleSSEEvent(
         const statusData = JSON.parse(event.data);
         if (statusData.session_id) {
           callbacks.onStatus(`Connected (${statusData.requested_model || statusData.model || 'claude'})`);
+          callbacks.onInitMeta?.({
+            tools: statusData.tools,
+            slash_commands: statusData.slash_commands,
+            skills: statusData.skills,
+          });
         } else if (statusData.notification) {
           callbacks.onStatus(statusData.message || statusData.title || undefined);
         } else {
@@ -254,6 +260,7 @@ export function useSSEStream() {
         onRewindPoint: (id) => callbacksRef.current?.onRewindPoint(id),
         onKeepAlive: () => callbacksRef.current?.onKeepAlive(),
         onError: (a) => callbacksRef.current?.onError(a),
+        onInitMeta: (m) => callbacksRef.current?.onInitMeta?.(m),
       };
 
       return consumeSSEStream(reader, proxied);

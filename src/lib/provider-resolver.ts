@@ -485,11 +485,9 @@ function buildResolution(
   // Has credentials?
   const hasCredentials = !!(provider.api_key) || authStyle === 'env_only';
 
-  // Settings sources — skip 'user' when a provider is configured to avoid
-  // ~/.claude/settings.json env overrides conflicting with provider config
-  const settingSources = hasCredentials
-    ? ['project', 'local']
-    : ['user', 'project', 'local'];
+  // Settings sources — always include 'user' so SDK can load skills from
+  // ~/.claude/skills/. Env override conflicts are handled by envOverrides.
+  const settingSources = ['user', 'project', 'local'];
 
   return {
     provider,

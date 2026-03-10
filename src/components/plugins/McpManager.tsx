@@ -19,9 +19,11 @@ interface McpRuntimeStatus {
   serverInfo?: { name: string; version: string };
 }
 
+type MCPServerWithSource = MCPServer & { _source?: string };
+
 export function McpManager() {
   const { t } = useTranslation();
-  const [servers, setServers] = useState<Record<string, MCPServer>>({});
+  const [servers, setServers] = useState<Record<string, MCPServerWithSource>>({});
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingName, setEditingName] = useState<string | undefined>();
@@ -116,9 +118,11 @@ export function McpManager() {
 
   async function handleSave(name: string, server: MCPServer) {
     if (editingName && editingName !== name) {
+      // Rename: preserve _source from the original entry
+      const original = servers[editingName];
       const updated = { ...servers };
       delete updated[editingName];
-      updated[name] = server;
+      updated[name] = original?._source ? { ...server, _source: original._source } : server;
       try {
         await fetch("/api/plugins/mcp", {
           method: "PUT",
@@ -130,7 +134,10 @@ export function McpManager() {
         console.error("Failed to save MCP server:", err);
       }
     } else if (editingName) {
-      const updated = { ...servers, [name]: server };
+      // Edit in-place: preserve _source
+      const original = servers[editingName];
+      const serverWithSource = original?._source ? { ...server, _source: original._source } : server;
+      const updated = { ...servers, [name]: serverWithSource };
       try {
         await fetch("/api/plugins/mcp", {
           method: "PUT",
@@ -162,13 +169,26 @@ export function McpManager() {
 
   async function handleJsonSave(jsonStr: string) {
     try {
-      const parsed = JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonStr) as Record<string, MCPServer>;
+      // JSON editor only manages settings.json servers.
+      // Merge back: keep claude.json servers untouched, replace settings.json servers.
+      const claudeJsonServers: Record<string, MCPServerWithSource> = {};
+      for (const [name, server] of Object.entries(servers)) {
+        if (server._source === 'claude.json') {
+          claudeJsonServers[name] = server;
+        }
+      }
+      const settingsServers: Record<string, MCPServerWithSource> = {};
+      for (const [name, server] of Object.entries(parsed)) {
+        settingsServers[name] = { ...server, _source: 'settings.json' };
+      }
+      const merged = { ...claudeJsonServers, ...settingsServers };
       await fetch("/api/plugins/mcp", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mcpServers: parsed }),
+        body: JSON.stringify({ mcpServers: merged }),
       });
-      setServers(parsed);
+      setServers(merged);
     } catch (err) {
       console.error("Failed to save MCP config:", err);
     }
@@ -234,8 +254,25 @@ export function McpManager() {
         </TabsContent>
 
         <TabsContent value="json" className="mt-4">
+          {Object.values(servers).some(s => s._source === 'claude.json') && (
+            <p className="text-xs text-muted-foreground mb-2">
+              Servers from ~/.claude.json are managed by Claude CLI and not shown here.
+              Use the list tab to edit or delete them.
+            </p>
+          )}
           <ConfigEditor
-            value={JSON.stringify(servers, null, 2)}
+            value={JSON.stringify(
+              Object.fromEntries(
+                Object.entries(servers)
+                  .filter(([, v]) => v._source !== 'claude.json')
+                  .map(([k, v]) => {
+                    const { _source, ...rest } = v;
+                    return [k, rest];
+                  })
+              ),
+              null,
+              2,
+            )}
             onSave={handleJsonSave}
             label={t('mcp.serverConfig')}
           />

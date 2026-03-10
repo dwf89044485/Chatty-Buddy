@@ -798,6 +798,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
               const sysMsg = message as SDKSystemMessage;
               if ('subtype' in sysMsg) {
                 if (sysMsg.subtype === 'init') {
+                  const initMsg = sysMsg as SDKSystemMessage & { slash_commands?: unknown; skills?: unknown };
                   controller.enqueue(formatSSE({
                     type: 'status',
                     data: JSON.stringify({
@@ -805,6 +806,8 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
                       model: sysMsg.model,
                       requested_model: model,
                       tools: sysMsg.tools,
+                      slash_commands: initMsg.slash_commands,
+                      skills: initMsg.skills,
                     }),
                   }));
                 } else if (sysMsg.subtype === 'status') {

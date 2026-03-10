@@ -3,12 +3,14 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
+import type { SkillKind } from "@/types";
 
 interface SkillFile {
   name: string;
   description: string;
   content: string;
-  source: "global" | "project" | "plugin" | "installed";
+  source: "global" | "project" | "plugin" | "installed" | "sdk";
+  kind: SkillKind;
   installedSource?: "agents" | "claude";
   filePath: string;
 }
@@ -86,6 +88,7 @@ function scanProjectSkills(dir: string): SkillFile[] {
         description,
         content,
         source: "project",
+        kind: "agent_skill",
         filePath: skillMdPath,
       });
     }
@@ -177,6 +180,7 @@ function scanInstalledSkills(
         description,
         content,
         source: "installed",
+        kind: "agent_skill",
         installedSource,
         contentHash,
         filePath: skillMdPath,
@@ -256,7 +260,7 @@ function scanDirectory(
       const description = firstLine.startsWith("#")
         ? firstLine.replace(/^#+\s*/, "")
         : firstLine || `Skill: /${name}`;
-      skills.push({ name, description, content, source, filePath });
+      skills.push({ name, description, content, source, kind: "slash_command", filePath });
     }
   } catch {
     // ignore read errors
@@ -332,7 +336,8 @@ export async function GET(request: NextRequest) {
               name: cmd.name,
               description: cmd.description || `SDK command: /${cmd.name}`,
               content: '', // SDK commands don't have local content
-              source: 'sdk' as typeof all[number]['source'],
+              source: 'sdk',
+              kind: 'sdk_command',
               filePath: '',
             });
           }

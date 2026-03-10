@@ -162,7 +162,6 @@ export function McpServerEditor({
           ...(env ? { env } : {}),
         }
       : {
-          command: '',
           type: serverType,
           ...(url ? { url: url.trim() } : {}),
           ...(serverArgs.length > 0 ? { args: serverArgs } : {}),

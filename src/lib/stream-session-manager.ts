@@ -64,6 +64,10 @@ export interface StartStreamParams {
   effort?: string;
   /** SDK thinking config */
   thinking?: { type: string; budgetTokens?: number };
+  /** Called when init status event provides metadata (tools, slash_commands, skills) */
+  onInitMeta?: (meta: { tools?: unknown; slash_commands?: unknown; skills?: unknown }) => void;
+  /** Display-only content for user message (e.g. /skillName instead of expanded prompt) */
+  displayOverride?: string;
 }
 
 // ==========================================
@@ -236,6 +240,7 @@ async function runStream(stream: ActiveStream, params: StartStreamParams): Promi
         ...(params.autoTrigger ? { autoTrigger: true } : {}),
         ...(params.effort ? { effort: params.effort } : {}),
         ...(params.thinking ? { thinking: params.thinking } : {}),
+        ...(params.displayOverride ? { displayOverride: params.displayOverride } : {}),
       }),
       signal: stream.abortController.signal,
     });
@@ -343,6 +348,10 @@ async function runStream(stream: ActiveStream, params: StartStreamParams): Promi
         markActive();
         stream.accumulatedText = acc;
         emit(stream, 'snapshot-updated');
+      },
+      onInitMeta: (meta) => {
+        markActive();
+        params.onInitMeta?.(meta);
       },
     });
 

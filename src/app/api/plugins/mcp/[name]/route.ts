@@ -8,23 +8,26 @@ function getSettingsPath(): string {
   return path.join(os.homedir(), '.claude', 'settings.json');
 }
 
-function readSettings(): Record<string, unknown> {
-  const settingsPath = getSettingsPath();
-  if (!fs.existsSync(settingsPath)) return {};
+// ~/.claude.json — Claude CLI stores user-scoped MCP servers here
+function getUserConfigPath(): string {
+  return path.join(os.homedir(), '.claude.json');
+}
+
+function readJsonFile(filePath: string): Record<string, unknown> {
+  if (!fs.existsSync(filePath)) return {};
   try {
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   } catch {
     return {};
   }
 }
 
-function writeSettings(settings: Record<string, unknown>): void {
-  const settingsPath = getSettingsPath();
-  const dir = path.dirname(settingsPath);
+function writeJsonFile(filePath: string, data: Record<string, unknown>): void {
+  const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
 
 export async function DELETE(
@@ -35,19 +38,34 @@ export async function DELETE(
     const { name } = await params;
     const serverName = decodeURIComponent(name);
 
-    const settings = readSettings();
-    const mcpServers = (settings.mcpServers || {}) as Record<string, MCPServerConfig>;
+    let deleted = false;
 
-    if (!mcpServers[serverName]) {
+    // Try deleting from ~/.claude/settings.json
+    const settings = readJsonFile(getSettingsPath());
+    const settingsServers = (settings.mcpServers || {}) as Record<string, MCPServerConfig>;
+    if (settingsServers[serverName]) {
+      delete settingsServers[serverName];
+      settings.mcpServers = settingsServers;
+      writeJsonFile(getSettingsPath(), settings);
+      deleted = true;
+    }
+
+    // Also try deleting from ~/.claude.json
+    const userConfig = readJsonFile(getUserConfigPath());
+    const userServers = (userConfig.mcpServers || {}) as Record<string, MCPServerConfig>;
+    if (userServers[serverName]) {
+      delete userServers[serverName];
+      userConfig.mcpServers = userServers;
+      writeJsonFile(getUserConfigPath(), userConfig);
+      deleted = true;
+    }
+
+    if (!deleted) {
       return NextResponse.json(
         { error: `MCP server "${serverName}" not found` },
         { status: 404 }
       );
     }
-
-    delete mcpServers[serverName];
-    settings.mcpServers = mcpServers;
-    writeSettings(settings);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -102,6 +102,8 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
   const pendingImageNoticesRef = useRef<string[]>([]);
   // Ref for sendMessage to allow self-referencing in timeout auto-retry
   const sendMessageRef = useRef<(content: string, files?: FileAttachment[]) => Promise<void>>(undefined);
+  // Init metadata from SDK (tools, slash_commands, skills) — populated on first status event
+  const initMetaRef = useRef<{ tools?: unknown; slash_commands?: unknown; skills?: unknown } | null>(null);
 
   const handleModeChange = useCallback((newMode: string) => {
     setMode(newMode);
@@ -151,7 +153,8 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
       // If stream completed while this ChatView was unmounted, consume finalMessageContent now.
       // Re-fetch messages from DB to avoid duplicates (backend already persisted the reply).
       if (existing.phase !== 'active' && existing.finalMessageContent) {
-        detectAssistantCompletion(existing.finalMessageContent);
+        // Completion processing (onboarding/checkin) is handled server-side only
+        // in the chat API's finally block — no frontend duplicate needed.
         fetch(`/api/chat/sessions/${sessionId}/messages?limit=50`)
           .then(res => res.ok ? res.json() : null)
           .then(data => {
@@ -200,8 +203,7 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
         // Append the final assistant message to the messages list
         const finalContent = event.snapshot.finalMessageContent;
         if (finalContent) {
-          // Check for assistant project completion signals
-          detectAssistantCompletion(finalContent);
+          // Completion processing (onboarding/checkin) is handled server-side only.
 
           const assistantMessage: Message = {
             id: 'temp-assistant-' + Date.now(),
@@ -278,6 +280,41 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
 
       if (!needsOnboarding && !needsCheckIn) return;
 
+      // ── Compensation: check if a past message already contains a completion fence ──
+      // This handles the case where the server-side detection also missed (e.g. crash/restart)
+      // and the frontend is about to re-trigger onboarding unnecessarily.
+      if (needsOnboarding && initialMessages.length > 0) {
+        try {
+          const { extractCompletion } = await import('@/lib/onboarding-completion');
+          // Scan assistant messages from newest to oldest for an unprocessed completion
+          for (let i = initialMessages.length - 1; i >= 0; i--) {
+            const msg = initialMessages[i];
+            if (msg.role !== 'assistant') continue;
+            const completion = extractCompletion(msg.content);
+            if (completion?.type === 'onboarding') {
+              console.log('[ChatView] Found unprocessed onboarding completion in message history, compensating...');
+              const resp = await fetch('/api/workspace/onboarding', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answers: completion.answers, sessionId }),
+              });
+              if (resp.ok) {
+                await fetch('/api/workspace/hook-triggered', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ sessionId: '__clear__' }),
+                }).catch(() => {});
+                console.log('[ChatView] Onboarding compensation succeeded, skipping re-trigger');
+                return; // Don't re-trigger onboarding
+              }
+              break; // Found fence but processing failed — fall through to re-trigger
+            }
+          }
+        } catch (e) {
+          console.error('[ChatView] Onboarding compensation check failed:', e);
+        }
+      }
+
       // For daily check-in, only trigger in the most recent session for this workspace.
       // This prevents older sessions from hijacking the check-in when reopened.
       if (needsCheckIn) {
@@ -316,6 +353,10 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
         },
         sendMessageFn: (retryContent: string, retryFiles?: FileAttachment[]) => {
           sendMessageRef.current?.(retryContent, retryFiles);
+        },
+        onInitMeta: (meta) => {
+          initMetaRef.current = meta;
+          console.log('[ChatView] SDK init meta received:', meta);
         },
       });
     } catch (e) {
@@ -433,69 +474,6 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
     [sessionId, setPendingApprovalSessionId]
   );
 
-  // Detect assistant project completion signals in final message content.
-  // Only processes fences when this session's workingDirectory matches the current assistant workspace path.
-  const detectAssistantCompletion = useCallback(async (content: string) => {
-    // Guard: only allow fence processing for the current assistant workspace session
-    if (!workingDirectory) return;
-    try {
-      const wsRes = await fetch('/api/settings/workspace');
-      if (!wsRes.ok) return;
-      const wsData = await wsRes.json();
-      if (!wsData.path || wsData.path !== workingDirectory) return;
-    } catch {
-      return;
-    }
-
-    const clearHookTriggered = () =>
-      fetch('/api/workspace/hook-triggered', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: '__clear__' }),
-      }).catch(() => {});
-
-    // Check for onboarding completion
-    const onboardingMatch = content.match(/```onboarding-complete\s*\r?\n([\s\S]*?)\r?\n\s*```/);
-    if (onboardingMatch) {
-      try {
-        const answers = JSON.parse(onboardingMatch[1].trim());
-        const resp = await fetch('/api/workspace/onboarding', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers, sessionId }),
-        });
-        if (resp.ok) {
-          await clearHookTriggered();
-        } else {
-          console.error('[ChatView] Onboarding API returned', resp.status);
-        }
-      } catch (e) {
-        console.error('[ChatView] Onboarding completion failed:', e);
-      }
-      return;
-    }
-
-    // Check for check-in completion
-    const checkinMatch = content.match(/```checkin-complete\s*\r?\n([\s\S]*?)\r?\n\s*```/);
-    if (checkinMatch) {
-      try {
-        const answers = JSON.parse(checkinMatch[1].trim());
-        const resp = await fetch('/api/workspace/checkin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers, sessionId }),
-        });
-        if (resp.ok) {
-          await clearHookTriggered();
-        } else {
-          console.error('[ChatView] Check-in API returned', resp.status);
-        }
-      } catch (e) {
-        console.error('[ChatView] Check-in completion failed:', e);
-      }
-    }
-  }, [sessionId, workingDirectory]);
-
   // Build SDK thinking config from settings
   const buildThinkingConfig = useCallback((): { type: string } | undefined => {
     if (!thinkingMode || thinkingMode === 'adaptive') return { type: 'adaptive' };
@@ -550,12 +528,17 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
         pendingImageNotices: notices,
         effort: selectedEffort,
         thinking: buildThinkingConfig(),
+        displayOverride,
         onModeChanged: (sdkMode) => {
           const uiMode = sdkMode === 'plan' ? 'plan' : 'code';
           handleModeChange(uiMode);
         },
         sendMessageFn: (retryContent: string, retryFiles?: FileAttachment[]) => {
           sendMessageRef.current?.(retryContent, retryFiles);
+        },
+        onInitMeta: (meta) => {
+          initMetaRef.current = meta;
+          console.log('[ChatView] SDK init meta received:', meta);
         },
       });
     },
@@ -734,6 +717,7 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
         onAssistantTrigger={checkAssistantTrigger}
         effort={selectedEffort}
         onEffortChange={setSelectedEffort}
+        sdkInitMeta={initMetaRef.current}
       />
       <ChatComposerActionBar
         left={<ImageGenToggle />}
