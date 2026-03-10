@@ -7,6 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -325,18 +332,30 @@ function PresetConnectDialog({
   preset,
   open,
   onOpenChange,
-  onAdd,
+  onSave,
+  editProvider,
 }: {
   preset: QuickPreset | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (data: ProviderFormData) => Promise<void>;
+  onSave: (data: ProviderFormData) => Promise<void>;
+  /** When set, dialog operates in edit mode (pre-fills from existing provider) */
+  editProvider?: ApiProvider | null;
 }) {
+  const isEdit = !!editProvider;
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [name, setName] = useState("");
   const [extraEnv, setExtraEnv] = useState("{}");
   const [modelName, setModelName] = useState("");
+  // Auth style for anthropic-thirdparty: 'api_key' or 'auth_token'
+  const [authStyle, setAuthStyle] = useState<"api_key" | "auth_token">("api_key");
+  // Track the initial auth style to detect changes
+  const [initialAuthStyle, setInitialAuthStyle] = useState<"api_key" | "auth_token">("api_key");
+  // Edit-mode advanced fields
+  const [headersJson, setHeadersJson] = useState("{}");
+  const [envOverridesJson, setEnvOverridesJson] = useState("");
+  const [notes, setNotes] = useState("");
   // Model mapping fields (sonnet/opus/haiku → actual API model IDs)
   const [mapSonnet, setMapSonnet] = useState("");
   const [mapOpus, setMapOpus] = useState("");
@@ -347,21 +366,83 @@ function PresetConnectDialog({
   const { t } = useTranslation();
   const isZh = t('nav.chats') === '对话';
 
-  // Reset form when dialog opens with a new preset
+  // Reset form when dialog opens
   useEffect(() => {
     if (!open || !preset) return;
-    setApiKey("");
-    setBaseUrl(preset.base_url);
-    setName(preset.name);
-    setExtraEnv(preset.extra_env);
-    setModelName("");
-    setMapSonnet("");
-    setMapOpus("");
-    setMapHaiku("");
     setError(null);
     setSaving(false);
-    setShowAdvanced(false);
-  }, [open, preset]);
+
+    if (isEdit && editProvider) {
+      // Edit mode — pre-fill from existing provider
+      setName(editProvider.name);
+      setBaseUrl(editProvider.base_url);
+      setApiKey(editProvider.api_key || "");
+      setExtraEnv(editProvider.extra_env || preset.extra_env);
+      // Detect auth style from existing extra_env
+      try {
+        const env = JSON.parse(editProvider.extra_env || "{}");
+        const detected = "ANTHROPIC_AUTH_TOKEN" in env ? "auth_token" as const : "api_key" as const;
+        setAuthStyle(detected);
+        setInitialAuthStyle(detected);
+      } catch {
+        setAuthStyle("api_key");
+        setInitialAuthStyle("api_key");
+      }
+      // Pre-fill advanced fields
+      setHeadersJson(editProvider.headers_json || "{}");
+      setEnvOverridesJson(editProvider.env_overrides_json || "");
+      setNotes(editProvider.notes || "");
+      // Pre-fill model name from role_models_json
+      try {
+        const rm = JSON.parse(editProvider.role_models_json || "{}");
+        setModelName(rm.default || "");
+        setMapSonnet(rm.sonnet || "");
+        setMapOpus(rm.opus || "");
+        setMapHaiku(rm.haiku || "");
+      } catch {
+        setModelName("");
+        setMapSonnet("");
+        setMapOpus("");
+        setMapHaiku("");
+      }
+      // Auto-expand advanced if there's meaningful data beyond preset defaults
+      const hasModelMapping = (() => {
+        try {
+          const rm = JSON.parse(editProvider.role_models_json || "{}");
+          return !!(rm.sonnet || rm.opus || rm.haiku);
+        } catch { return false; }
+      })();
+      const hasExtraEnvBeyondAuth = (() => {
+        try {
+          const env = JSON.parse(editProvider.extra_env || "{}");
+          const meaningful = Object.keys(env).filter(k =>
+            k !== "ANTHROPIC_API_KEY" && k !== "ANTHROPIC_AUTH_TOKEN"
+          );
+          return meaningful.length > 0;
+        } catch { return false; }
+      })();
+      const hasHeaders = editProvider.headers_json && editProvider.headers_json !== "{}";
+      const hasEnvOverrides = !!editProvider.env_overrides_json;
+      const hasNotes = !!editProvider.notes;
+      setShowAdvanced(hasModelMapping || hasExtraEnvBeyondAuth || !!hasHeaders || hasEnvOverrides || hasNotes);
+    } else {
+      // Create mode — reset to preset defaults
+      setApiKey("");
+      setBaseUrl(preset.base_url);
+      setName(preset.name);
+      setExtraEnv(preset.extra_env);
+      setModelName("");
+      setAuthStyle("api_key");
+      setInitialAuthStyle("api_key");
+      setMapSonnet("");
+      setMapOpus("");
+      setMapHaiku("");
+      setHeadersJson("{}");
+      setEnvOverridesJson("");
+      setNotes("");
+      setShowAdvanced(false);
+    }
+  }, [open, preset, isEdit, editProvider]);
 
   if (!preset) return null;
 
@@ -369,10 +450,42 @@ function PresetConnectDialog({
     e.preventDefault();
     setError(null);
 
-    const finalExtraEnv = extraEnv;
-    let roleModelsJson = "{}";
+    // If auth style changed in edit mode, require a new key
+    if (isEdit && authStyle !== initialAuthStyle && (!apiKey || apiKey.startsWith("***"))) {
+      setError(isZh
+        ? '切换认证方式后需要重新输入密钥'
+        : 'Please re-enter the key after changing auth style');
+      return;
+    }
+
+    // For anthropic-thirdparty, inject the correct auth key into extra_env
+    // while preserving any other user-specified env vars (e.g. API_TIMEOUT_MS)
+    let finalExtraEnv = extraEnv;
+    if (preset.key === "anthropic-thirdparty") {
+      try {
+        const parsed = JSON.parse(extraEnv || "{}");
+        // Remove both auth keys, then set the correct one
+        delete parsed["ANTHROPIC_API_KEY"];
+        delete parsed["ANTHROPIC_AUTH_TOKEN"];
+        if (authStyle === "auth_token") {
+          parsed["ANTHROPIC_AUTH_TOKEN"] = "";
+        } else {
+          parsed["ANTHROPIC_API_KEY"] = "";
+        }
+        finalExtraEnv = JSON.stringify(parsed);
+      } catch {
+        // If parse fails, fall back to simple replacement
+        finalExtraEnv = authStyle === "auth_token"
+          ? '{"ANTHROPIC_AUTH_TOKEN":""}'
+          : '{"ANTHROPIC_API_KEY":""}';
+      }
+    }
+    // In edit mode, preserve existing role_models_json unless the user modifies mapping fields
+    let roleModelsJson = (isEdit && editProvider?.role_models_json) ? editProvider.role_models_json : "{}";
 
     // Model mapping (sonnet/opus/haiku → actual API model IDs)
+    // Merge into existing roleModels to preserve roles not shown in this preset.
+    // If the preset exposes these fields and user cleared them all, remove those keys.
     if (preset.fields.includes("model_mapping")) {
       const hasAny = mapSonnet.trim() || mapOpus.trim() || mapHaiku.trim();
       if (hasAny) {
@@ -383,30 +496,51 @@ function PresetConnectDialog({
             : 'Model mapping requires all 3 model names (Sonnet, Opus, Haiku)');
           return;
         }
+        const existing = (() => { try { return JSON.parse(roleModelsJson); } catch { return {}; } })();
         roleModelsJson = JSON.stringify({
+          ...existing,
           sonnet: mapSonnet.trim(),
           opus: mapOpus.trim(),
           haiku: mapHaiku.trim(),
         });
+      } else {
+        // All cleared — remove these keys from existing
+        const existing = (() => { try { return JSON.parse(roleModelsJson); } catch { return {}; } })();
+        delete existing.sonnet;
+        delete existing.opus;
+        delete existing.haiku;
+        roleModelsJson = JSON.stringify(existing);
       }
     }
 
-    // Inject model name into role_models_json (preferred) instead of extra_env.ANTHROPIC_MODEL
-    if (preset.fields.includes("model_names") && modelName.trim()) {
-      roleModelsJson = JSON.stringify({ default: modelName.trim() });
+    // Inject model name into role_models_json — merge, don't replace.
+    // If the preset exposes model_names and user cleared it, remove the default key.
+    if (preset.fields.includes("model_names")) {
+      const existing = (() => { try { return JSON.parse(roleModelsJson); } catch { return {}; } })();
+      if (modelName.trim()) {
+        roleModelsJson = JSON.stringify({ ...existing, default: modelName.trim() });
+      } else {
+        delete existing.default;
+        roleModelsJson = JSON.stringify(existing);
+      }
     }
 
-    // Validate extra_env JSON
-    try {
-      JSON.parse(finalExtraEnv);
-    } catch {
-      setError("Extra environment variables must be valid JSON");
-      return;
+    // Validate JSON fields
+    for (const [label, val] of [
+      ["Extra environment variables", finalExtraEnv],
+      ...(isEdit ? [["Headers", headersJson]] : []),
+    ] as const) {
+      if (val && val.trim()) {
+        try { JSON.parse(val); } catch {
+          setError(`${label} must be valid JSON`);
+          return;
+        }
+      }
     }
 
     setSaving(true);
     try {
-      await onAdd({
+      await onSave({
         name: name.trim() || preset.name,
         provider_type: preset.provider_type,
         protocol: preset.protocol,
@@ -414,11 +548,13 @@ function PresetConnectDialog({
         api_key: apiKey,
         extra_env: finalExtraEnv,
         role_models_json: roleModelsJson,
-        notes: "",
+        headers_json: isEdit ? headersJson.trim() || "{}" : undefined,
+        env_overrides_json: isEdit ? envOverridesJson.trim() || "" : undefined,
+        notes: isEdit ? notes.trim() : "",
       });
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add provider");
+      setError(err instanceof Error ? err.message : (isEdit ? "Failed to update provider" : "Failed to add provider"));
     } finally {
       setSaving(false);
     }
@@ -426,11 +562,11 @@ function PresetConnectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[28rem] overflow-hidden">
+      <DialogContent className="max-w-[28rem]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2.5">
             {preset.icon}
-            {t('provider.connect')} {preset.name}
+            {isEdit ? t('provider.editProvider') : t('provider.connect')} {preset.name}
           </DialogTitle>
           <DialogDescription>
             {isZh ? preset.descriptionZh : preset.description}
@@ -464,18 +600,50 @@ function PresetConnectDialog({
             </div>
           )}
 
-          {/* API Key */}
+          {/* API Key with optional auth style select */}
           {preset.fields.includes("api_key") && (
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">API Key</Label>
-              <Input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
-                className="text-sm font-mono"
-                autoFocus
-              />
+              <Label className="text-xs text-muted-foreground">
+                {preset.key === "anthropic-thirdparty"
+                  ? (authStyle === "auth_token" ? "Auth Token" : "API Key")
+                  : "API Key"}
+              </Label>
+              <div className="flex gap-2">
+                {preset.key === "anthropic-thirdparty" && (
+                  <Select
+                    value={authStyle}
+                    onValueChange={(v) => {
+                      const newStyle = v as "api_key" | "auth_token";
+                      setAuthStyle(newStyle);
+                      if (isEdit && editProvider?.api_key) {
+                        if (newStyle !== initialAuthStyle) {
+                          // Switching away — clear masked key to force re-entry
+                          setApiKey("");
+                        } else {
+                          // Switching back to original — restore masked key
+                          setApiKey(editProvider.api_key);
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[130px] shrink-0 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="api_key">API Key</SelectItem>
+                      <SelectItem value="auth_token">Auth Token</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                <Input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={authStyle === "auth_token" ? "token-..." : "sk-..."}
+                  className="text-sm font-mono flex-1"
+                  autoFocus
+                />
+              </div>
             </div>
           )}
 
@@ -572,6 +740,42 @@ function PresetConnectDialog({
                       rows={3}
                     />
                   </div>
+
+                  {/* Edit-mode only: headers, env overrides, notes */}
+                  {isEdit && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Headers (JSON)</Label>
+                        <Textarea
+                          value={headersJson}
+                          onChange={(e) => setHeadersJson(e.target.value)}
+                          placeholder='{"X-Custom-Header": "value"}'
+                          className="text-sm font-mono min-h-[60px]"
+                          rows={2}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Env Overrides (JSON)</Label>
+                        <Textarea
+                          value={envOverridesJson}
+                          onChange={(e) => setEnvOverridesJson(e.target.value)}
+                          placeholder='{"CLAUDE_CODE_USE_BEDROCK": "1"}'
+                          className="text-sm font-mono min-h-[60px]"
+                          rows={2}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">{t('provider.notes')}</Label>
+                        <Textarea
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          placeholder={t('provider.notesPlaceholder')}
+                          className="text-sm"
+                          rows={2}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </>
@@ -590,13 +794,42 @@ function PresetConnectDialog({
             </Button>
             <Button type="submit" disabled={saving} className="gap-2">
               {saving && <HugeiconsIcon icon={Loading02Icon} className="h-4 w-4 animate-spin" />}
-              {saving ? t('provider.saving') : t('provider.connect')}
+              {saving ? t('provider.saving') : isEdit ? t('provider.update') : t('provider.connect')}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Preset matcher — find which quick preset a provider was created from
+// ---------------------------------------------------------------------------
+
+function findMatchingPreset(provider: ApiProvider): QuickPreset | undefined {
+  // Exact base_url match (most specific)
+  if (provider.base_url) {
+    const match = QUICK_PRESETS.find(p => p.base_url && p.base_url === provider.base_url);
+    if (match) return match;
+  }
+  // Type-based fallback for known types
+  if (provider.provider_type === "bedrock") return QUICK_PRESETS.find(p => p.key === "bedrock");
+  if (provider.provider_type === "vertex") return QUICK_PRESETS.find(p => p.key === "vertex");
+  if (provider.provider_type === "openrouter") return QUICK_PRESETS.find(p => p.key === "openrouter");
+  if (provider.provider_type === "gemini-image") return QUICK_PRESETS.find(p => p.key === "gemini-image");
+  if (provider.provider_type === "anthropic" && provider.base_url === "https://api.anthropic.com") {
+    return QUICK_PRESETS.find(p => p.key === "anthropic-official");
+  }
+  // Anthropic-type with custom base_url → anthropic-thirdparty
+  if (provider.provider_type === "anthropic" && provider.base_url) {
+    return QUICK_PRESETS.find(p => p.key === "anthropic-thirdparty");
+  }
+  // Custom/OpenAI-compatible
+  if (provider.provider_type === "custom" || provider.protocol === "openai-compatible") {
+    return QUICK_PRESETS.find(p => p.key === "custom-openai");
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -611,13 +844,14 @@ export function ProviderManager() {
   const { t } = useTranslation();
   const isZh = t('nav.chats') === '对话';
 
-  // Edit dialog state (reuse existing ProviderForm for full editing)
+  // Edit dialog state — fallback ProviderForm for providers that don't match any preset
   const [formOpen, setFormOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<ApiProvider | null>(null);
 
-  // Preset connect dialog state
+  // Preset connect/edit dialog state
   const [connectPreset, setConnectPreset] = useState<QuickPreset | null>(null);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [presetEditProvider, setPresetEditProvider] = useState<ApiProvider | null>(null);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<ApiProvider | null>(null);
@@ -641,13 +875,26 @@ export function ProviderManager() {
   useEffect(() => { fetchProviders(); }, [fetchProviders]);
 
   const handleEdit = (provider: ApiProvider) => {
-    setEditingProvider(provider);
-    setFormOpen(true);
+    // Try to match provider to a quick preset for a cleaner edit experience
+    const matchedPreset = findMatchingPreset(provider);
+    if (matchedPreset) {
+      // Clear stale generic-form state to prevent handleEditSave picking the wrong target
+      setEditingProvider(null);
+      setConnectPreset(matchedPreset);
+      setPresetEditProvider(provider);
+      setConnectDialogOpen(true);
+    } else {
+      // Clear stale preset-edit state
+      setPresetEditProvider(null);
+      setEditingProvider(provider);
+      setFormOpen(true);
+    }
   };
 
   const handleEditSave = async (data: ProviderFormData) => {
-    if (!editingProvider) return;
-    const res = await fetch(`/api/providers/${editingProvider.id}`, {
+    const target = presetEditProvider || editingProvider;
+    if (!target) return;
+    const res = await fetch(`/api/providers/${target.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -657,7 +904,7 @@ export function ProviderManager() {
       throw new Error(errData.error || "Failed to update provider");
     }
     const result = await res.json();
-    setProviders((prev) => prev.map((p) => (p.id === editingProvider.id ? result.provider : p)));
+    setProviders((prev) => prev.map((p) => (p.id === target.id ? result.provider : p)));
     window.dispatchEvent(new Event("provider-changed"));
   };
 
@@ -678,6 +925,7 @@ export function ProviderManager() {
 
   const handleOpenPresetDialog = (preset: QuickPreset) => {
     setConnectPreset(preset);
+    setPresetEditProvider(null); // ensure create mode
     setConnectDialogOpen(true);
   };
 
@@ -785,7 +1033,9 @@ export function ProviderManager() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium truncate">{provider.name}</span>
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {provider.api_key ? "API Key" : t('provider.configured')}
+                        {provider.api_key
+                          ? (provider.extra_env?.includes("ANTHROPIC_AUTH_TOKEN") ? "Auth Token" : "API Key")
+                          : t('provider.configured')}
                       </Badge>
                     </div>
                   </div>
@@ -921,12 +1171,16 @@ export function ProviderManager() {
         initialPreset={null}
       />
 
-      {/* Preset connect dialog */}
+      {/* Preset connect/edit dialog */}
       <PresetConnectDialog
         preset={connectPreset}
         open={connectDialogOpen}
-        onOpenChange={setConnectDialogOpen}
-        onAdd={handlePresetAdd}
+        onOpenChange={(open) => {
+          setConnectDialogOpen(open);
+          if (!open) setPresetEditProvider(null);
+        }}
+        onSave={presetEditProvider ? handleEditSave : handlePresetAdd}
+        editProvider={presetEditProvider}
       />
 
       {/* Disconnect confirmation */}

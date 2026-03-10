@@ -137,6 +137,8 @@ const zh: Record<TranslationKey, string> = {
   'provider.name': '名称',
   'provider.providerType': '服务商类型',
   'provider.apiKey': 'API 密钥',
+  'provider.authToken': 'Auth Token',
+  'provider.authStyle': '认证方式',
   'provider.baseUrl': '基础 URL',
   'provider.modelName': '模型名称',
   'provider.advancedOptions': '高级选项',

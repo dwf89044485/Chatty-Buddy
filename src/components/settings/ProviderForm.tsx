@@ -95,7 +95,8 @@ export function ProviderForm({
       setName(provider.name);
       setProviderType(provider.provider_type);
       setBaseUrl(provider.base_url);
-      setApiKey("");
+      // Show masked key so user sees dots indicating a key exists
+      setApiKey(provider.api_key || "");
       setExtraEnv(provider.extra_env || "{}");
       setHeadersJson(provider.headers_json || "{}");
       setEnvOverridesJson(provider.env_overrides_json || "");
@@ -202,7 +203,7 @@ export function ProviderForm({
     }
   };
 
-  const isMaskedKey = mode === "edit" && provider?.api_key?.startsWith("***");
+  const isMaskedKey = mode === "edit" && apiKey?.startsWith("***");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

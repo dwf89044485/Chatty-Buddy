@@ -140,6 +140,8 @@ const en = {
   'provider.name': 'Name',
   'provider.providerType': 'Provider Type',
   'provider.apiKey': 'API Key',
+  'provider.authToken': 'Auth Token',
+  'provider.authStyle': 'Auth Style',
   'provider.baseUrl': 'Base URL',
   'provider.modelName': 'Model Name',
   'provider.advancedOptions': 'Advanced Options',
