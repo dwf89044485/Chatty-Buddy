@@ -16,6 +16,8 @@ import { Warning } from "@/components/ui/icon";
 import { useTranslation } from "@/hooks/useTranslation";
 import { InstallWizard } from "@/components/layout/InstallWizard";
 
+type CliRuntime = 'claude' | 'codebuddy';
+
 interface ClaudeInstallInfo {
   path: string;
   version: string | null;
@@ -23,6 +25,7 @@ interface ClaudeInstallInfo {
 }
 
 interface ClaudeStatus {
+  runtime?: CliRuntime;
   connected: boolean;
   version: string | null;
   binaryPath?: string | null;
@@ -30,6 +33,7 @@ interface ClaudeStatus {
   otherInstalls?: ClaudeInstallInfo[];
   missingGit?: boolean;
   warnings?: string[];
+  runtimes?: Record<CliRuntime, ClaudeStatus>;
 }
 
 const BASE_INTERVAL = 30_000; // 30s
@@ -58,6 +62,8 @@ export function ConnectionStatus() {
   const [status, setStatus] = useState<ClaudeStatus | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const activeRuntime = status?.runtime === 'codebuddy' ? 'codebuddy' : 'claude';
+  const runtimeLabel = activeRuntime === 'codebuddy' ? 'CodeBuddy CLI' : 'Claude Code';
 
   const isElectron =
     typeof window !== "undefined" &&
@@ -157,6 +163,11 @@ export function ConnectionStatus() {
   const hasConflicts = (status?.otherInstalls?.length ?? 0) > 0;
   const missingGit = status?.missingGit ?? false;
   const hasWarnings = hasConflicts || missingGit;
+  const subtitle = status === null
+    ? t('connection.checking')
+    : connected
+      ? `${runtimeLabel}${status?.version ? ` v${status.version}` : ''}`
+      : runtimeLabel;
 
   return (
     <>
@@ -165,7 +176,7 @@ export function ConnectionStatus() {
         size="sm"
         onClick={() => setDialogOpen(true)}
         className={cn(
-          "h-7 rounded-full px-2.5 text-[11px] font-medium gap-1.5",
+          "h-8 rounded-full px-2.5 text-[11px] font-medium gap-1.5",
           status === null
             ? "bg-muted text-muted-foreground"
             : connected
@@ -187,7 +198,7 @@ export function ConnectionStatus() {
                 : "bg-status-error"
           )}
         />
-        {status === null
+        <span>{status === null
           ? t('connection.checking')
           : connected
             ? missingGit
@@ -195,7 +206,8 @@ export function ConnectionStatus() {
               : hasConflicts
                 ? t('connection.conflict')
                 : t('connection.connected')
-            : t('connection.disconnected')}
+            : t('connection.disconnected')}</span>
+        <span className="hidden text-[10px] opacity-80 md:inline">· {subtitle}</span>
       </Button>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -212,8 +224,8 @@ export function ConnectionStatus() {
               {connected
                 ? missingGit
                   ? t('connection.missingGitDesc')
-                  : `Claude Code CLI v${status?.version} is running and ready.`
-                : "Claude Code CLI is required to use this application."}
+                  : `${runtimeLabel} v${status?.version} is running and ready.`
+                : `${runtimeLabel} is required for the currently selected runtime.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -224,6 +236,7 @@ export function ConnectionStatus() {
                 <div>
                   <p className="font-medium text-status-success-foreground">Active</p>
                   <p className="text-xs text-muted-foreground">
+                    {runtimeLabel} · {' '}
                     {t('connection.version', { version: status?.version ?? '' })}
                     {status?.installType && ` (${INSTALL_TYPE_LABELS[status.installType] || status.installType})`}
                   </p>
@@ -284,35 +297,62 @@ export function ConnectionStatus() {
             <div className="space-y-4 text-sm">
               <div className="flex items-center gap-3 rounded-lg bg-status-error-muted px-4 py-3">
                 <span className="block h-2.5 w-2.5 shrink-0 rounded-full bg-status-error" />
-                <p className="font-medium text-status-error-foreground">Not detected</p>
+                <p className="font-medium text-status-error-foreground">{runtimeLabel} not detected</p>
               </div>
 
-              <div>
-                <h4 className="font-medium mb-1.5">1. {t('connection.installClaude')}</h4>
-                {navigator.platform?.startsWith('Win') ? (
-                  <code className="block rounded-md bg-muted px-3 py-2 text-xs">
-                    irm https://claude.ai/install.ps1 | iex
-                  </code>
-                ) : (
-                  <code className="block rounded-md bg-muted px-3 py-2 text-xs">
-                    curl -fsSL https://claude.ai/install.sh | bash
-                  </code>
-                )}
-              </div>
+              {activeRuntime === 'claude' ? (
+                <>
+                  <div>
+                    <h4 className="font-medium mb-1.5">1. {t('connection.installClaude')}</h4>
+                    {navigator.platform?.startsWith('Win') ? (
+                      <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                        irm https://claude.ai/install.ps1 | iex
+                      </code>
+                    ) : (
+                      <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                        curl -fsSL https://claude.ai/install.sh | bash
+                      </code>
+                    )}
+                  </div>
 
-              <div>
-                <h4 className="font-medium mb-1.5">2. Authenticate</h4>
-                <code className="block rounded-md bg-muted px-3 py-2 text-xs">
-                  claude login
-                </code>
-              </div>
+                  <div>
+                    <h4 className="font-medium mb-1.5">2. Authenticate</h4>
+                    <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                      claude login
+                    </code>
+                  </div>
 
-              <div>
-                <h4 className="font-medium mb-1.5">3. Verify Installation</h4>
-                <code className="block rounded-md bg-muted px-3 py-2 text-xs">
-                  claude --version
-                </code>
-              </div>
+                  <div>
+                    <h4 className="font-medium mb-1.5">3. Verify Installation</h4>
+                    <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                      claude --version
+                    </code>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h4 className="font-medium mb-1.5">1. Install CodeBuddy CLI</h4>
+                    <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                      codebuddy --version
+                    </code>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium mb-1.5">2. Authenticate</h4>
+                    <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                      codebuddy login
+                    </code>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium mb-1.5">3. Verify Installation</h4>
+                    <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                      codebuddy --version
+                    </code>
+                  </div>
+                </>
+              )}
 
               {isElectron && (
                 <div className="pt-2 border-t">
@@ -322,8 +362,9 @@ export function ConnectionStatus() {
                       setWizardOpen(true);
                     }}
                     className="w-full"
+                    disabled={activeRuntime === 'codebuddy'}
                   >
-                    {t('connection.installAuto')}
+                    {activeRuntime === 'codebuddy' ? 'Switch to Claude setup for auto-install' : t('connection.installAuto')}
                   </Button>
                 </div>
               )}

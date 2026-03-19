@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { CLI_TOOLS_CATALOG, EXTRA_WELL_KNOWN_BINS } from '@/lib/cli-tools-catalog';
-import { generateTextViaSdk } from '@/lib/claude-client';
+import { generateTextViaRuntime } from '@/lib/agent-runtime';
 
 /**
  * Try to extract a JSON object from text that may be wrapped in markdown code blocks
@@ -68,7 +68,7 @@ Respond in this exact JSON format (no markdown, no code fences, just raw JSON):
 
     let result: string;
     try {
-      result = await generateTextViaSdk({
+      result = await generateTextViaRuntime({
         providerId: providerId || undefined,
         model: requestModel || undefined,
         system: 'You are a technical documentation writer. Respond with raw JSON only, no markdown formatting.',

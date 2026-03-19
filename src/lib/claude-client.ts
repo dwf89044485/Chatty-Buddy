@@ -17,8 +17,9 @@ import type { ClaudeStreamOptions, SSEEvent, TokenUsage, MCPServerConfig, Permis
 import { isImageFile } from '@/types';
 import { registerPendingPermission } from './permission-registry';
 import { registerConversation, unregisterConversation } from './conversation-registry';
-import { captureCapabilities, setCachedPlugins } from './agent-sdk-capabilities';
+import { captureCapabilities, setCachedPlugins, buildCapabilityCacheKey } from './agent-sdk-capabilities';
 import { getSetting, updateSdkSessionId, createPermissionRequest } from './db';
+import { getRuntimeSessionId, setRuntimeSessionId } from './cli-runtime';
 import { resolveForClaudeCode, toClaudeCodeEnv } from './provider-resolver';
 import { findClaudeBinary, findGitBash, getExpandedPath, invalidateClaudePathCache } from './platform';
 import { notifyPermissionRequest, notifyGeneric } from './telegram-bot';
@@ -399,6 +400,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
 
   return new ReadableStream<string>({
     async start(controller) {
+      const runtimeSessionId = getRuntimeSessionId(sdkSessionId, 'claude');
       // Resolve provider via the unified resolver. The caller may pass an explicit
       // provider (from resolveProvider().provider), or undefined when 'env' mode is
       // intended. We do NOT fall back to getActiveProvider() here — that's handled
@@ -573,12 +575,12 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
         // Pre-check: verify working_directory exists before attempting resume.
         // Resume depends on session context (cwd/project scope), so if the
         // original working_directory no longer exists, resume will fail.
-        let shouldResume = !!sdkSessionId;
+        let shouldResume = !!runtimeSessionId;
         if (shouldResume && workingDirectory && !fs.existsSync(workingDirectory)) {
           console.warn(`[claude-client] Working directory "${workingDirectory}" does not exist, skipping resume`);
           shouldResume = false;
           if (sessionId) {
-            try { updateSdkSessionId(sessionId, ''); } catch { /* best effort */ }
+            try { updateSdkSessionId(sessionId, setRuntimeSessionId(sdkSessionId, 'claude', '')); } catch { /* best effort */ }
           }
           controller.enqueue(formatSSE({
             type: 'status',
@@ -591,7 +593,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           }));
         }
         if (shouldResume) {
-          queryOptions.resume = sdkSessionId;
+          queryOptions.resume = runtimeSessionId;
         }
 
         // Permission handler: sends SSE event and waits for user response
@@ -615,7 +617,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             createPermissionRequest({
               id: permissionRequestId,
               sessionId,
-              sdkSessionId: sdkSessionId || '',
+              sdkSessionId: runtimeSessionId || '',
               toolName,
               toolInput: JSON.stringify(input),
               decisionReason: opts.decisionReason || '',
@@ -749,7 +751,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
                 content: contentBlocks,
               },
               parent_tool_use_id: null,
-              session_id: sdkSessionId || '',
+              session_id: runtimeSessionId || '',
             };
 
             return (async function* () {
@@ -791,7 +793,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             console.warn('[claude-client] Resume failed, retrying without resume:', errMsg);
             // Clear stale sdk_session_id so future messages don't retry this broken resume
             if (sessionId) {
-              try { updateSdkSessionId(sessionId, ''); } catch { /* best effort */ }
+              try { updateSdkSessionId(sessionId, setRuntimeSessionId(sdkSessionId, 'claude', '')); } catch { /* best effort */ }
             }
             // Notify frontend about the fallback
             controller.enqueue(formatSSE({
@@ -816,7 +818,10 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
 
         // Fire-and-forget: capture SDK capabilities for UI consumption
         // Scope to provider so different providers don't pollute each other's cache
-        const capProviderId = resolved.provider?.api_key ? resolved.provider.id || 'custom' : 'env';
+        const capProviderId = buildCapabilityCacheKey(
+          resolved.provider?.api_key ? resolved.provider.id || 'custom' : 'env',
+          'claude',
+        );
         captureCapabilities(sessionId, conversation, capProviderId).catch((err) => {
           console.warn('[claude-client] Capability capture failed:', err);
         });
@@ -1110,7 +1115,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
         // handlers. Leaving it would cause repeated resume failures.
         if (sessionId) {
           try {
-            updateSdkSessionId(sessionId, '');
+            updateSdkSessionId(sessionId, setRuntimeSessionId(sdkSessionId, 'claude', ''));
             console.warn('[claude-client] Cleared stale sdk_session_id for session', sessionId);
           } catch {
             // best effort

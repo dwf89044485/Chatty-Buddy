@@ -9,6 +9,8 @@ const execFileAsync = promisify(execFile);
 export const isWindows = process.platform === 'win32';
 export const isMac = process.platform === 'darwin';
 
+export type SupportedCliRuntime = 'claude' | 'codebuddy';
+
 /**
  * Whether the given binary path requires shell execution.
  * On Windows, .cmd/.bat files cannot be executed directly by execFileSync.
@@ -53,6 +55,8 @@ export function getExtraPathDirs(): string[] {
  */
 export type ClaudeInstallType = 'native' | 'homebrew' | 'npm' | 'bun' | 'unknown';
 
+export type CodeBuddyInstallType = 'native' | 'npm' | 'bun' | 'unknown';
+
 export function classifyClaudePath(binPath: string): ClaudeInstallType {
   const home = os.homedir();
   const normalized = binPath.replace(/\\/g, '/');
@@ -71,6 +75,31 @@ export function classifyClaudePath(binPath: string): ClaudeInstallType {
       const real = fs.realpathSync(binPath);
       if (real.includes('node_modules')) return 'npm';
       if (real.includes('homebrew') || real.includes('Cellar')) return 'homebrew';
+      if (real.includes('.bun')) return 'bun';
+    } catch { /* ignore */ }
+    return 'unknown';
+  }
+  if (isWindows) {
+    const appData = (process.env.APPDATA || '').replace(/\\/g, '/');
+    const localAppData = (process.env.LOCALAPPDATA || '').replace(/\\/g, '/');
+    if (appData && normalized.startsWith(appData + '/npm')) return 'npm';
+    if (localAppData && normalized.startsWith(localAppData + '/npm')) return 'npm';
+    if (normalized.includes(home.replace(/\\/g, '/') + '/.local/bin')) return 'native';
+  }
+  return 'unknown';
+}
+
+export function classifyCodeBuddyPath(binPath: string): CodeBuddyInstallType {
+  const home = os.homedir();
+  const normalized = binPath.replace(/\\/g, '/');
+  if (normalized.includes('/.local/bin/')) return 'native';
+  if (normalized.includes('/.codebuddy/bin/')) return 'native';
+  if (normalized.includes('/.bun/bin/') || normalized.includes('/.bun/install/')) return 'bun';
+  if (normalized.includes('/npm') || normalized.includes('npm-global')) return 'npm';
+  if (normalized === '/usr/local/bin/codebuddy' || normalized === '/usr/local/bin/cbc') {
+    try {
+      const real = fs.realpathSync(binPath);
+      if (real.includes('node_modules')) return 'npm';
       if (real.includes('.bun')) return 'bun';
     } catch { /* ignore */ }
     return 'unknown';
@@ -123,10 +152,53 @@ export function getClaudeCandidatePaths(): string[] {
   ];
 }
 
+export function getCodeBuddyCandidatePaths(): string[] {
+  const home = os.homedir();
+  if (isWindows) {
+    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    const exts = ['.cmd', '.exe', '.bat', ''];
+    const baseDirs = [
+      path.join(home, '.local', 'bin'),
+      path.join(home, '.codebuddy', 'bin'),
+      path.join(home, '.bun', 'bin'),
+      path.join(appData, 'npm'),
+      path.join(localAppData, 'npm'),
+      path.join(home, '.npm-global', 'bin'),
+    ];
+    const names = ['codebuddy', 'cbc'];
+    const candidates: string[] = [];
+    for (const dir of baseDirs) {
+      for (const name of names) {
+        for (const ext of exts) {
+          candidates.push(path.join(dir, name + ext));
+        }
+      }
+    }
+    return candidates;
+  }
+
+  return [
+    path.join(home, '.local', 'bin', 'codebuddy'),
+    path.join(home, '.codebuddy', 'bin', 'codebuddy'),
+    path.join(home, '.bun', 'bin', 'codebuddy'),
+    '/usr/local/bin/codebuddy',
+    '/usr/local/bin/cbc',
+    path.join(home, '.npm-global', 'bin', 'codebuddy'),
+    path.join(home, '.npm-global', 'bin', 'cbc'),
+  ];
+}
+
 export interface ClaudeInstallInfo {
   path: string;
   version: string | null;
   type: ClaudeInstallType;
+}
+
+export interface CodeBuddyInstallInfo {
+  path: string;
+  version: string | null;
+  type: CodeBuddyInstallType;
 }
 
 /**
@@ -195,6 +267,79 @@ export function findAllClaudeBinaries(): ClaudeInstallInfo[] {
   return results;
 }
 
+export function findAllCodeBuddyBinaries(): CodeBuddyInstallInfo[] {
+  const results: CodeBuddyInstallInfo[] = [];
+  const seenReal = new Set<string>();
+
+  function tryAdd(p: string) {
+    try {
+      let realPath: string;
+      try { realPath = fs.realpathSync(p); } catch { realPath = p; }
+      if (seenReal.has(realPath)) return;
+
+      let winDirKey: string | undefined;
+      if (isWindows) {
+        winDirKey = path.join(path.dirname(realPath), path.basename(realPath).replace(/\.(exe|cmd|bat)$/i, '')).toLowerCase();
+        if (seenReal.has(winDirKey)) return;
+      }
+
+      const out = execFileSync(p, ['--version'], {
+        timeout: 3000,
+        stdio: 'pipe',
+        shell: needsShell(p),
+        encoding: 'utf-8',
+      });
+      seenReal.add(realPath);
+      if (winDirKey) seenReal.add(winDirKey);
+      results.push({ path: p, version: out.trim() || null, type: classifyCodeBuddyPath(p) });
+    } catch {
+      // not found at this path
+    }
+  }
+
+  for (const p of getCodeBuddyCandidatePaths()) {
+    tryAdd(p);
+  }
+
+  try {
+    const cmd = isWindows ? 'where' : '/usr/bin/which';
+    const args = isWindows ? ['codebuddy'] : ['-a', 'codebuddy'];
+    const result = execFileSync(cmd, args, {
+      timeout: 3000,
+      stdio: 'pipe',
+      env: { ...process.env, PATH: getExpandedPath() },
+      shell: isWindows,
+      encoding: 'utf-8',
+    });
+    for (const line of result.trim().split(/\r?\n/)) {
+      const candidate = line.trim();
+      if (candidate) tryAdd(candidate);
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const cmd = isWindows ? 'where' : '/usr/bin/which';
+    const args = isWindows ? ['cbc'] : ['-a', 'cbc'];
+    const result = execFileSync(cmd, args, {
+      timeout: 3000,
+      stdio: 'pipe',
+      env: { ...process.env, PATH: getExpandedPath() },
+      shell: isWindows,
+      encoding: 'utf-8',
+    });
+    for (const line of result.trim().split(/\r?\n/)) {
+      const candidate = line.trim();
+      if (candidate) tryAdd(candidate);
+    }
+  } catch {
+    // ignore
+  }
+
+  return results;
+}
+
 /**
  * Build an expanded PATH string with extra directories, deduped and filtered.
  */
@@ -218,6 +363,9 @@ let _cachedBinaryPath: string | undefined | null = null; // null = not cached
 let _cachedBinaryTimestamp = 0;
 const BINARY_CACHE_TTL = 60_000; // 60 seconds
 
+let _cachedCodeBuddyPath: string | undefined | null = null;
+let _cachedCodeBuddyTimestamp = 0;
+
 /**
  * Invalidate all cached binary paths.
  * Must be called after a new installation so that subsequent SDK calls
@@ -226,6 +374,11 @@ const BINARY_CACHE_TTL = 60_000; // 60 seconds
 export function invalidateClaudePathCache(): void {
   _cachedBinaryPath = null;
   _cachedBinaryTimestamp = 0;
+}
+
+export function invalidateCodeBuddyPathCache(): void {
+  _cachedCodeBuddyPath = null;
+  _cachedCodeBuddyTimestamp = 0;
 }
 
 /**
@@ -297,6 +450,69 @@ function _findClaudeBinaryUncached(): string | undefined {
   return undefined;
 }
 
+export function findCodeBuddyBinary(): string | undefined {
+  const now = Date.now();
+  if (_cachedCodeBuddyPath !== null && now - _cachedCodeBuddyTimestamp < BINARY_CACHE_TTL) {
+    return _cachedCodeBuddyPath;
+  }
+
+  const found = _findCodeBuddyBinaryUncached();
+  if (found) {
+    _cachedCodeBuddyPath = found;
+    _cachedCodeBuddyTimestamp = now;
+  } else {
+    _cachedCodeBuddyPath = null;
+  }
+  return found;
+}
+
+function _findCodeBuddyBinaryUncached(): string | undefined {
+  for (const p of getCodeBuddyCandidatePaths()) {
+    try {
+      execFileSync(p, ['--version'], {
+        timeout: 3000,
+        stdio: 'pipe',
+        shell: needsShell(p),
+      });
+      return p;
+    } catch {
+      // try next
+    }
+  }
+
+  for (const name of ['codebuddy', 'cbc']) {
+    try {
+      const cmd = isWindows ? 'where' : '/usr/bin/which';
+      const args = isWindows ? [name] : [name];
+      const result = execFileSync(cmd, args, {
+        timeout: 3000,
+        stdio: 'pipe',
+        env: { ...process.env, PATH: getExpandedPath() },
+        shell: isWindows,
+      });
+      const lines = result.toString().trim().split(/\r?\n/);
+      for (const line of lines) {
+        const candidate = line.trim();
+        if (!candidate) continue;
+        try {
+          execFileSync(candidate, ['--version'], {
+            timeout: 3000,
+            stdio: 'pipe',
+            shell: needsShell(candidate),
+          });
+          return candidate;
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      // ignore and continue
+    }
+  }
+
+  return undefined;
+}
+
 /**
  * Execute claude --version and return the version string.
  * Handles .cmd shell execution on Windows.
@@ -307,6 +523,19 @@ export async function getClaudeVersion(claudePath: string): Promise<string | nul
       timeout: 5000,
       env: { ...process.env, PATH: getExpandedPath() },
       shell: needsShell(claudePath),
+    });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCodeBuddyVersion(codebuddyPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(codebuddyPath, ['--version'], {
+      timeout: 5000,
+      env: { ...process.env, PATH: getExpandedPath() },
+      shell: needsShell(codebuddyPath),
     });
     return stdout.trim() || null;
   } catch {

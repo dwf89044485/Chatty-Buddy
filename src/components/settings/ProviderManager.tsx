@@ -31,6 +31,45 @@ import { useTranslation } from "@/hooks/useTranslation";
 import Anthropic from "@lobehub/icons/es/Anthropic";
 import { ProviderOptionsSection } from "./ProviderOptionsSection";
 
+type CliRuntime = 'claude' | 'codebuddy';
+
+interface RuntimeInstallInfo {
+  path: string;
+  version: string | null;
+  type: string;
+}
+
+interface RuntimeStatusDetail {
+  connected: boolean;
+  version: string | null;
+  binaryPath?: string | null;
+  installType?: string | null;
+  otherInstalls?: RuntimeInstallInfo[];
+  missingGit?: boolean;
+  warnings?: string[];
+}
+
+interface RuntimeStatusResponse {
+  runtime: CliRuntime;
+  runtimes: {
+    claude: RuntimeStatusDetail;
+    codebuddy: RuntimeStatusDetail;
+  };
+}
+
+const RUNTIME_META: Record<CliRuntime, { title: string; subtitleZh: string; subtitleEn: string }> = {
+  claude: {
+    title: 'Claude Code',
+    subtitleZh: '兼容当前主链，能力最完整',
+    subtitleEn: 'Best compatibility with the current mainline',
+  },
+  codebuddy: {
+    title: 'CodeBuddy CLI',
+    subtitleZh: '复用已登录 CLI，直接切换运行时',
+    subtitleEn: 'Reuse the authenticated CLI and switch instantly',
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -42,6 +81,9 @@ export function ProviderManager() {
   const [envDetected, setEnvDetected] = useState<Record<string, string>>({});
   const { t } = useTranslation();
   const isZh = t('nav.chats') === '对话';
+  const [cliRuntime, setCliRuntime] = useState<CliRuntime>('claude');
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatusResponse | null>(null);
+  const [runtimeSaving, setRuntimeSaving] = useState<CliRuntime | null>(null);
 
   // Edit dialog state — fallback ProviderForm for providers that don't match any preset
   const [formOpen, setFormOpen] = useState(false);
@@ -74,7 +116,55 @@ export function ProviderManager() {
     }
   }, []);
 
-  useEffect(() => { fetchProviders(); }, [fetchProviders]);
+  const fetchRuntimeStatus = useCallback(async () => {
+    const [settingsRes, statusRes] = await Promise.all([
+      fetch('/api/settings/app'),
+      fetch('/api/claude-status'),
+    ]);
+
+    if (settingsRes.ok) {
+      const settingsData = await settingsRes.json();
+      const nextRuntime = settingsData.settings?.cli_runtime === 'codebuddy' ? 'codebuddy' : 'claude';
+      setCliRuntime(nextRuntime);
+    }
+
+    if (statusRes.ok) {
+      const statusData: RuntimeStatusResponse = await statusRes.json();
+      setRuntimeStatus(statusData);
+      setCliRuntime(statusData.runtime === 'codebuddy' ? 'codebuddy' : 'claude');
+    }
+  }, []);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([fetchProviders(), fetchRuntimeStatus()]);
+  }, [fetchProviders, fetchRuntimeStatus]);
+
+  useEffect(() => { refreshAll(); }, [refreshAll]);
+
+  const handleRuntimeSwitch = useCallback(async (nextRuntime: CliRuntime) => {
+    if (nextRuntime === cliRuntime) return;
+    setRuntimeSaving(nextRuntime);
+    try {
+      const res = await fetch('/api/settings/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { cli_runtime: nextRuntime } }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to switch CLI runtime');
+      }
+
+      await fetch('/api/claude-status/invalidate', { method: 'POST' }).catch(() => null);
+      setCliRuntime(nextRuntime);
+      await fetchRuntimeStatus();
+      window.dispatchEvent(new Event('provider-changed'));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to switch CLI runtime');
+    } finally {
+      setRuntimeSaving(null);
+    }
+  }, [cliRuntime, fetchRuntimeStatus]);
 
   const handleEdit = (provider: ApiProvider) => {
     // Try to match provider to a quick preset for a cleaner edit experience
@@ -196,6 +286,125 @@ export function ProviderManager() {
 
   const sorted = [...providers].sort((a, b) => a.sort_order - b.sort_order);
 
+  const renderRuntimeCard = (runtime: CliRuntime) => {
+    const status = runtimeStatus?.runtimes?.[runtime];
+    const active = cliRuntime === runtime;
+    const connected = status?.connected ?? false;
+    const warnings = status?.warnings || [];
+    const hasWarnings = warnings.length > 0 || !!status?.missingGit;
+    const meta = RUNTIME_META[runtime];
+
+    return (
+      <div
+        key={runtime}
+        className={[
+          'group relative overflow-hidden rounded-2xl border p-4 transition-all duration-200',
+          active
+            ? 'border-primary/40 bg-gradient-to-br from-primary/10 via-background to-background shadow-lg shadow-primary/10'
+            : 'border-border/60 bg-gradient-to-br from-muted/30 via-background to-background hover:border-primary/20 hover:shadow-md',
+        ].join(' ')}
+      >
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_35%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_35%)]" />
+        <div className="relative space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold tracking-tight">{meta.title}</span>
+                {active && (
+                  <Badge className="border-primary/30 bg-primary/15 text-primary hover:bg-primary/15">
+                    {isZh ? '当前使用中' : 'Active Runtime'}
+                  </Badge>
+                )}
+                {!connected && (
+                  <Badge variant="outline" className="text-[10px] border-status-error/40 text-status-error-foreground">
+                    {isZh ? '未检测到' : 'Not detected'}
+                  </Badge>
+                )}
+                {connected && hasWarnings && (
+                  <Badge variant="outline" className="text-[10px] border-status-warning/40 text-status-warning-foreground">
+                    {isZh ? '需关注' : 'Needs attention'}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {isZh ? meta.subtitleZh : meta.subtitleEn}
+              </p>
+            </div>
+            <div className={[
+              'mt-0.5 h-2.5 w-2.5 rounded-full shrink-0 transition-colors',
+              connected
+                ? hasWarnings
+                  ? 'bg-status-warning shadow-[0_0_0_4px_rgba(245,158,11,0.12)]'
+                  : 'bg-status-success shadow-[0_0_0_4px_rgba(34,197,94,0.12)]'
+                : 'bg-status-error shadow-[0_0_0_4px_rgba(239,68,68,0.12)]',
+            ].join(' ')} />
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl border border-border/50 bg-background/80 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
+                {isZh ? '状态' : 'Status'}
+              </p>
+              <p className="mt-1 text-sm font-medium">
+                {connected
+                  ? hasWarnings
+                    ? (isZh ? '可用但需关注' : 'Ready with warnings')
+                    : (isZh ? '已就绪' : 'Ready')
+                  : (isZh ? '等待安装 / 登录' : 'Waiting for install / auth')}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border/50 bg-background/80 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
+                {isZh ? '版本' : 'Version'}
+              </p>
+              <p className="mt-1 text-sm font-medium">{status?.version || '—'}</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-dashed border-border/60 bg-background/70 px-3 py-2">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/80">
+              {isZh ? '可执行路径' : 'Binary Path'}
+            </p>
+            <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+              {status?.binaryPath || (isZh ? '暂未发现二进制文件' : 'Binary not detected yet')}
+            </p>
+          </div>
+
+          {warnings.length > 0 && (
+            <div className="space-y-1 rounded-xl border border-status-warning/20 bg-status-warning-muted/60 px-3 py-2">
+              {warnings.slice(0, 2).map((warning, index) => (
+                <p key={index} className="text-[11px] leading-relaxed text-status-warning-foreground/90">
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <p className="text-[11px] text-muted-foreground">
+              {active
+                ? (isZh ? '新的对话与桥接消息将走此运行时。' : 'New chats and bridge messages will use this runtime.')
+                : (isZh ? '点击即可切换，不会影响已存在会话记录。' : 'Switch instantly without affecting existing chat history.')}
+            </p>
+            <Button
+              size="sm"
+              variant={active ? 'secondary' : 'default'}
+              className={active ? 'shrink-0' : 'shrink-0 shadow-sm'}
+              disabled={runtimeSaving !== null || !connected}
+              onClick={() => handleRuntimeSwitch(runtime)}
+            >
+              {runtimeSaving === runtime
+                ? (isZh ? '切换中...' : 'Switching...')
+                : active
+                  ? (isZh ? '当前运行时' : 'Current')
+                  : (isZh ? '切换到这里' : 'Use This Runtime')}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Error */}
@@ -205,7 +414,33 @@ export function ProviderManager() {
         </div>
       )}
 
-      {/* ─── Section 0: Troubleshooting ─── */}
+      {/* ─── Section 0: CLI Runtime Switch ─── */}
+      {!loading && (
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/30 p-4 md:p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold tracking-tight">
+                {isZh ? 'CLI 运行时切换' : 'CLI Runtime Switch'}
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground max-w-2xl">
+                {isZh
+                  ? '保留原有 Claude Code，同时接入 CodeBuddy CLI。这里决定新的聊天与桥接消息走哪一个本地 CLI 运行时。'
+                  : 'Keep Claude Code and add CodeBuddy CLI side by side. This switch decides which local CLI runtime powers new chats and bridge messages.'}
+              </p>
+            </div>
+            <Badge variant="outline" className="w-fit border-primary/25 bg-primary/10 text-primary">
+              {isZh ? `当前：${RUNTIME_META[cliRuntime].title}` : `Current: ${RUNTIME_META[cliRuntime].title}`}
+            </Badge>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            {renderRuntimeCard('claude')}
+            {renderRuntimeCard('codebuddy')}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Section 0.5: Troubleshooting ─── */}
       <div className="rounded-lg border border-border/50 p-4">
         <div className="flex items-center justify-between">
           <div>

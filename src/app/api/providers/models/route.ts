@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAllProviders, getDefaultProviderId, setDefaultProviderId, getProvider, getModelsForProvider, getSetting } from '@/lib/db';
+import { getCliRuntime } from '@/lib/cli-runtime';
 import { getContextWindow } from '@/lib/model-context';
 import { getDefaultModelsForProvider, inferProtocolFromLegacy, findPresetForLegacy } from '@/lib/provider-catalog';
 import type { Protocol } from '@/lib/provider-catalog';
@@ -66,8 +67,8 @@ export async function GET() {
 
     // If SDK has discovered models, use them for the env group
     try {
-      const { getCachedModels } = await import('@/lib/agent-sdk-capabilities');
-      const sdkModels = getCachedModels('env');
+      const { getCachedModels, buildCapabilityCacheKey } = await import('@/lib/agent-sdk-capabilities');
+      const sdkModels = getCachedModels(buildCapabilityCacheKey('env', getCliRuntime()));
       if (sdkModels.length > 0) {
         groups[0].models = sdkModels.map(m => {
           const cw = getContextWindow(m.value);

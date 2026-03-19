@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { invalidateClaudeClientCache } from '@/lib/claude-client';
+import { invalidateAgentRuntimeCache } from '@/lib/agent-runtime';
 
 /**
  * POST /api/claude-status/invalidate
@@ -7,6 +7,6 @@ import { invalidateClaudeClientCache } from '@/lib/claude-client';
  * picks up a freshly-installed binary. Called by the install wizard on success.
  */
 export async function POST() {
-  invalidateClaudeClientCache();
+  invalidateAgentRuntimeCache();
   return NextResponse.json({ ok: true });
 }

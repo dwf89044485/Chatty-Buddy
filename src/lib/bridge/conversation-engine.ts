@@ -8,10 +8,10 @@
 
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import type { ChannelBinding } from './types';
-import type { SSEEvent, TokenUsage, MessageContentBlock, FileAttachment, MCPServerConfig } from '@/types';
-import { streamClaude } from '../claude-client';
+import type { SSEEvent, TokenUsage, MessageContentBlock, FileAttachment } from '@/types';
+import { streamAgentRuntime } from '../agent-runtime';
+import { resolveProvider as resolveProviderUnified } from '../provider-resolver';
 import {
   addMessage,
   getMessages,
@@ -25,42 +25,9 @@ import {
   getSession,
   getSetting,
 } from '../db';
-import { resolveProvider as resolveProviderUnified } from '../provider-resolver';
 import crypto from 'crypto';
-
-/** Read MCP server configs from ~/.claude.json and ~/.claude/settings.json */
-function loadMcpServers(): Record<string, MCPServerConfig> | undefined {
-  try {
-    const readJson = (p: string): Record<string, unknown> => {
-      if (!fs.existsSync(p)) return {};
-      try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
-    };
-    const userConfig = readJson(path.join(os.homedir(), '.claude.json'));
-    const settings = readJson(path.join(os.homedir(), '.claude', 'settings.json'));
-    // Also read project-level .mcp.json
-    const projectMcp = readJson(path.join(process.cwd(), '.mcp.json'));
-    const merged = {
-      ...((userConfig.mcpServers || {}) as Record<string, MCPServerConfig>),
-      ...((settings.mcpServers || {}) as Record<string, MCPServerConfig>),
-      ...((projectMcp.mcpServers || {}) as Record<string, MCPServerConfig>),
-    };
-    // Resolve ${...} placeholders in env values against DB settings
-    for (const server of Object.values(merged)) {
-      if (server.env) {
-        for (const [key, value] of Object.entries(server.env)) {
-          if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
-            const settingKey = value.slice(2, -1);
-            const resolved = getSetting(settingKey);
-            server.env[key] = resolved || '';
-          }
-        }
-      }
-    }
-    return Object.keys(merged).length > 0 ? merged : undefined;
-  } catch {
-    return undefined;
-  }
-}
+import { getCliRuntime, setRuntimeSessionId } from '../cli-runtime';
+import { loadRuntimeMcpServers } from '../runtime-mcp';
 
 export interface PermissionRequestInfo {
   permissionRequestId: string;
@@ -212,14 +179,16 @@ export async function processMessage(
       }
     }
 
-    // Load MCP servers from Claude config files so the SDK has access to
-    // user-level MCP tools, matching the desktop chat route behavior.
-    const mcpServers = loadMcpServers();
+    // Load MCP servers from the active runtime config so bridge messages stay
+    // aligned with whichever CLI backend is currently selected.
+    const activeRuntime = getCliRuntime();
+    const mcpServers = loadRuntimeMcpServers(activeRuntime);
 
-    const stream = streamClaude({
+    const stream = streamAgentRuntime({
       prompt: text,
       sessionId,
-      sdkSessionId: binding.sdkSessionId || undefined,
+      sdkSessionId: binding.sdkSessionId || session?.sdk_session_id || undefined,
+      runtime: activeRuntime,
       model: effectiveModel,
       systemPrompt: session?.system_prompt || undefined,
       workingDirectory: binding.workingDirectory || session?.working_directory || undefined,
@@ -239,7 +208,7 @@ export async function processMessage(
     // Consume the stream server-side (replicate collectStreamResponse pattern).
     // Permission requests are forwarded immediately via the callback during streaming
     // because the stream blocks until permission is resolved — we can't wait until after.
-    return await consumeStream(stream, sessionId, onPermissionRequest, onPartialText, onToolEvent);
+    return await consumeStream(stream, sessionId, activeRuntime, onPermissionRequest, onPartialText, onToolEvent);
   } finally {
     clearInterval(renewalInterval);
     releaseSessionLock(sessionId, lockId);
@@ -254,6 +223,7 @@ export async function processMessage(
 async function consumeStream(
   stream: ReadableStream<string>,
   sessionId: string,
+  activeRuntime: import('@/types').CliRuntime,
   onPermissionRequest?: OnPermissionRequest,
   onPartialText?: OnPartialText,
   onToolEvent?: OnToolEvent,
@@ -366,7 +336,7 @@ async function consumeStream(
               const statusData = JSON.parse(event.data);
               if (statusData.session_id) {
                 capturedSdkSessionId = statusData.session_id;
-                updateSdkSessionId(sessionId, statusData.session_id);
+                updateSdkSessionId(sessionId, setRuntimeSessionId(getSession(sessionId)?.sdk_session_id, statusData.runtime === 'codebuddy' ? 'codebuddy' : activeRuntime, statusData.session_id));
               }
               if (statusData.model) {
                 updateSessionModel(sessionId, statusData.model);
@@ -397,7 +367,7 @@ async function consumeStream(
               if (resultData.is_error) hasError = true;
               if (resultData.session_id) {
                 capturedSdkSessionId = resultData.session_id;
-                updateSdkSessionId(sessionId, resultData.session_id);
+                updateSdkSessionId(sessionId, setRuntimeSessionId(getSession(sessionId)?.sdk_session_id, activeRuntime, resultData.session_id));
               }
             } catch { /* skip */ }
             break;

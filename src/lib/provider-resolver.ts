@@ -69,6 +69,29 @@ export interface ResolveOptions {
   useCase?: 'default' | 'reasoning' | 'small';
 }
 
+const MANAGED_PROVIDER_ENV_KEYS = new Set([
+  'API_TIMEOUT_MS',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_SKIP_BEDROCK_AUTH',
+  'CLAUDE_CODE_SKIP_VERTEX_AUTH',
+  'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+  'ENABLE_TOOL_SEARCH',
+  'AWS_REGION',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'AWS_SESSION_TOKEN',
+  'CLOUD_ML_REGION',
+  'ANTHROPIC_PROJECT_ID',
+  'GEMINI_API_KEY',
+]);
+
+const ANTHROPIC_AUTH_ENV_KEYS = new Set([
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_BASE_URL',
+]);
+
 /**
  * Resolve a provider + model for any consumer.
  *
@@ -152,28 +175,10 @@ export function toClaudeCodeEnv(
 ): Record<string, string> {
   const env = { ...baseEnv };
 
-  // Managed env vars that must be cleaned when switching providers to prevent leaks
-  const MANAGED_ENV_KEYS = new Set([
-    'API_TIMEOUT_MS',
-    'CLAUDE_CODE_USE_BEDROCK',
-    'CLAUDE_CODE_USE_VERTEX',
-    'CLAUDE_CODE_SKIP_BEDROCK_AUTH',
-    'CLAUDE_CODE_SKIP_VERTEX_AUTH',
-    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
-    'ENABLE_TOOL_SEARCH',
-    'AWS_REGION',
-    'AWS_ACCESS_KEY_ID',
-    'AWS_SECRET_ACCESS_KEY',
-    'AWS_SESSION_TOKEN',
-    'CLOUD_ML_REGION',
-    'ANTHROPIC_PROJECT_ID',
-    'GEMINI_API_KEY',
-  ]);
-
   if (resolved.provider && resolved.hasCredentials) {
     // Clear all ANTHROPIC_* variables AND managed env vars to prevent cross-provider leaks
     for (const key of Object.keys(env)) {
-      if (key.startsWith('ANTHROPIC_') || MANAGED_ENV_KEYS.has(key)) {
+      if (key.startsWith('ANTHROPIC_') || MANAGED_PROVIDER_ENV_KEYS.has(key)) {
         delete env[key];
       }
     }
@@ -227,13 +232,8 @@ export function toClaudeCodeEnv(
     // Skip auth-related keys — they were already correctly injected above based on authStyle.
     // Legacy extra_env often contains placeholder entries like {"ANTHROPIC_AUTH_TOKEN":""} or
     // {"ANTHROPIC_API_KEY":""} that would delete the freshly-injected credentials.
-    const AUTH_ENV_KEYS = new Set([
-      'ANTHROPIC_API_KEY',
-      'ANTHROPIC_AUTH_TOKEN',
-      'ANTHROPIC_BASE_URL',
-    ]);
     for (const [key, value] of Object.entries(resolved.envOverrides)) {
-      if (AUTH_ENV_KEYS.has(key)) continue; // already handled by auth injection
+      if (ANTHROPIC_AUTH_ENV_KEYS.has(key)) continue; // already handled by auth injection
       if (typeof value === 'string') {
         if (value === '') {
           delete env[key];
@@ -248,6 +248,71 @@ export function toClaudeCodeEnv(
     const appBaseUrl = getSetting('anthropic_base_url');
     if (appToken) env.ANTHROPIC_AUTH_TOKEN = appToken;
     if (appBaseUrl) env.ANTHROPIC_BASE_URL = appBaseUrl;
+  }
+
+  return env;
+}
+
+export function toCodeBuddyEnv(
+  baseEnv: Record<string, string>,
+  resolved: ResolvedProvider,
+): Record<string, string> {
+  const env = { ...baseEnv };
+
+  env.CTI_RUNTIME = 'codebuddy';
+
+  if (resolved.provider && resolved.hasCredentials) {
+    for (const key of Object.keys(env)) {
+      if (
+        key.startsWith('ANTHROPIC_') ||
+        key.startsWith('CTI_') ||
+        MANAGED_PROVIDER_ENV_KEYS.has(key)
+      ) {
+        delete env[key];
+      }
+    }
+
+    env.CTI_RUNTIME = 'codebuddy';
+
+    if (resolved.upstreamModel || resolved.roleModels.default || resolved.model) {
+      env.CTI_DEFAULT_MODEL = resolved.upstreamModel || resolved.roleModels.default || resolved.model || '';
+    }
+
+    if (resolved.roleModels.reasoning) {
+      env.CTI_REASONING_MODEL = resolved.roleModels.reasoning;
+    }
+    if (resolved.roleModels.small) {
+      env.CTI_SMALL_FAST_MODEL = resolved.roleModels.small;
+    }
+    if (resolved.roleModels.haiku) {
+      env.CTI_DEFAULT_HAIKU_MODEL = resolved.roleModels.haiku;
+    }
+    if (resolved.roleModels.sonnet) {
+      env.CTI_DEFAULT_SONNET_MODEL = resolved.roleModels.sonnet;
+    }
+    if (resolved.roleModels.opus) {
+      env.CTI_DEFAULT_OPUS_MODEL = resolved.roleModels.opus;
+    }
+
+    for (const [k, v] of Object.entries(resolved.headers)) {
+      if (v) env[k] = v;
+    }
+
+    for (const [key, value] of Object.entries(resolved.envOverrides)) {
+      if (ANTHROPIC_AUTH_ENV_KEYS.has(key)) continue;
+      if (typeof value === 'string') {
+        if (value === '') {
+          delete env[key];
+        } else {
+          env[key] = value;
+        }
+      }
+    }
+  } else if (!resolved.provider) {
+    const envModel = process.env.CTI_DEFAULT_MODEL || process.env.ANTHROPIC_MODEL || getSetting('default_model');
+    if (envModel) {
+      env.CTI_DEFAULT_MODEL = envModel;
+    }
   }
 
   return env;

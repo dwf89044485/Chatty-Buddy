@@ -1,52 +1,18 @@
 import { NextRequest } from 'next/server';
-import { streamClaude } from '@/lib/claude-client';
+import { streamAgentRuntime } from '@/lib/agent-runtime';
 import { addMessage, getMessages, getSession, updateSessionTitle, updateSdkSessionId, updateSessionModel, updateSessionProvider, updateSessionProviderId, getSetting, acquireSessionLock, renewSessionLock, releaseSessionLock, setSessionRuntimeStatus, syncSdkTasks } from '@/lib/db';
 import { resolveProvider as resolveProviderUnified } from '@/lib/provider-resolver';
 import { notifySessionStart, notifySessionComplete, notifySessionError } from '@/lib/telegram-bot';
 import { extractCompletion } from '@/lib/onboarding-completion';
-import type { SendMessageRequest, SSEEvent, TokenUsage, MessageContentBlock, FileAttachment, ClaudeStreamOptions } from '@/types';
+import type { SendMessageRequest, SSEEvent, TokenUsage, MessageContentBlock, FileAttachment, ClaudeStreamOptions, CliRuntime } from '@/types';
+import { getCliRuntime, getRuntimeSessionId, setRuntimeSessionId } from '@/lib/cli-runtime';
 import crypto from 'crypto';
+import { loadRuntimeMcpServers } from '@/lib/runtime-mcp';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
-import type { MCPServerConfig } from '@/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-/** Read MCP server configs from ~/.claude.json, ~/.claude/settings.json, and project .mcp.json */
-function loadMcpServers(): Record<string, MCPServerConfig> | undefined {
-  try {
-    const readJson = (p: string): Record<string, unknown> => {
-      if (!fs.existsSync(p)) return {};
-      try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; }
-    };
-    const userConfig = readJson(path.join(os.homedir(), '.claude.json'));
-    const settings = readJson(path.join(os.homedir(), '.claude', 'settings.json'));
-    // Also read project-level .mcp.json
-    const projectMcp = readJson(path.join(process.cwd(), '.mcp.json'));
-    const merged = {
-      ...((userConfig.mcpServers || {}) as Record<string, MCPServerConfig>),
-      ...((settings.mcpServers || {}) as Record<string, MCPServerConfig>),
-      ...((projectMcp.mcpServers || {}) as Record<string, MCPServerConfig>),
-    };
-    // Resolve ${...} placeholders in env values against DB settings
-    for (const server of Object.values(merged)) {
-      if (server.env) {
-        for (const [key, value] of Object.entries(server.env)) {
-          if (typeof value === 'string' && value.startsWith('${') && value.endsWith('}')) {
-            const settingKey = value.slice(2, -1);
-            const resolved = getSetting(settingKey);
-            server.env[key] = resolved || '';
-          }
-        }
-      }
-    }
-    return Object.keys(merged).length > 0 ? merged : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 export async function POST(request: NextRequest) {
   let activeSessionId: string | undefined;
@@ -354,20 +320,23 @@ Start by greeting the user and asking the first question.
 
     // Load MCP servers from Claude config files so the SDK knows about them
     // even when settingSources skips 'user' (custom provider scenario).
-    const mcpServers = loadMcpServers();
+    const activeRuntime = getCliRuntime();
+    const mcpServers = loadRuntimeMcpServers(activeRuntime);
+    const activeRuntimeSessionId = getRuntimeSessionId(session.sdk_session_id, activeRuntime);
 
     // Stream Claude response, using SDK session ID for resume if available
     console.log('[chat API] streamClaude params:', {
       promptLength: content.length,
       promptFirst200: content.slice(0, 200),
-      sdkSessionId: session.sdk_session_id || 'none',
+      sdkSessionId: activeRuntimeSessionId || 'none',
       systemPromptLength: finalSystemPrompt?.length || 0,
       systemPromptFirst200: finalSystemPrompt?.slice(0, 200) || 'none',
     });
-    const stream = streamClaude({
+    const stream = streamAgentRuntime({
       prompt: content,
       sessionId: session_id,
       sdkSessionId: session.sdk_session_id || undefined,
+      runtime: activeRuntime,
       model: resolved.upstreamModel || resolved.model || effectiveModel,
       systemPrompt: finalSystemPrompt,
       workingDirectory: session.sdk_cwd || session.working_directory || undefined,
@@ -402,7 +371,7 @@ Start by greeting the user and asking the first question.
     }, 60_000);
 
     // Save assistant message in background, with cleanup callback to release lock
-    collectStreamResponse(streamForCollect, session_id, telegramNotifyOpts, () => {
+    collectStreamResponse(streamForCollect, session_id, activeRuntime, telegramNotifyOpts, () => {
       clearInterval(lockRenewalInterval);
       releaseSessionLock(session_id, lockId);
       setSessionRuntimeStatus(session_id, 'idle');
@@ -435,6 +404,7 @@ Start by greeting the user and asking the first question.
 async function collectStreamResponse(
   stream: ReadableStream<string>,
   sessionId: string,
+  activeRuntime: CliRuntime,
   telegramOpts: { sessionId?: string; sessionTitle?: string; workingDirectory?: string },
   onComplete?: () => void,
 ) {
@@ -508,7 +478,7 @@ async function collectStreamResponse(
               try {
                 const statusData = JSON.parse(event.data);
                 if (statusData.session_id) {
-                  updateSdkSessionId(sessionId, statusData.session_id);
+                  updateSdkSessionId(sessionId, setRuntimeSessionId(getSession(sessionId)?.sdk_session_id, statusData.runtime === 'codebuddy' ? 'codebuddy' : activeRuntime, statusData.session_id));
                 }
                 if (statusData.model) {
                   updateSessionModel(sessionId, statusData.model);
@@ -540,7 +510,7 @@ async function collectStreamResponse(
                 }
                 // Also capture session_id from result if we missed it from init
                 if (resultData.session_id) {
-                  updateSdkSessionId(sessionId, resultData.session_id);
+                  updateSdkSessionId(sessionId, setRuntimeSessionId(getSession(sessionId)?.sdk_session_id, activeRuntime, resultData.session_id));
                 }
               } catch {
                 // skip malformed result data

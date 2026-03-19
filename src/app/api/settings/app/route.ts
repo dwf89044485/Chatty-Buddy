@@ -13,6 +13,7 @@ const ALLOWED_KEYS = [
   'generative_ui_enabled',
   'locale',
   'thinking_mode',
+  'cli_runtime',
 ];
 
 export async function GET() {

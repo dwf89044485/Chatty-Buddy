@@ -940,10 +940,13 @@ export interface StreamEvent {
 
 export type StreamEventListener = (event: StreamEvent) => void;
 
+export type CliRuntime = 'claude' | 'codebuddy';
+
 export interface ClaudeStreamOptions {
   prompt: string;
   sessionId: string;
   sdkSessionId?: string; // SDK session ID for resuming conversations
+  runtime?: CliRuntime;
   model?: string;
   systemPrompt?: string;
   workingDirectory?: string;

@@ -11,6 +11,7 @@
  */
 
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
+import type { CliRuntime } from '@/types';
 import type {
   ModelInfo,
   SlashCommand,
@@ -59,6 +60,10 @@ function getOrCreateCache(providerId: string): ProviderCapabilityCache {
     map.set(providerId, cache);
   }
   return cache;
+}
+
+export function buildCapabilityCacheKey(providerId: string = 'env', runtime: CliRuntime = 'claude'): string {
+  return `${runtime}:${providerId || 'env'}`;
 }
 
 // ==========================================
