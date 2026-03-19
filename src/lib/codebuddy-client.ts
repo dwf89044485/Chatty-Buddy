@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
-import type { ChildProcessWithoutNullStreams } from 'child_process';
+import type { ChildProcessByStdio } from 'child_process';
+import type { Readable } from 'stream';
 import path from 'path';
 import { getSetting, updateSdkSessionId } from './db';
 import { getRuntimeSessionId, setRuntimeSessionId } from './cli-runtime';
@@ -194,7 +195,7 @@ export function streamCodeBuddy(options: ClaudeStreamOptions): ReadableStream<st
       const env = sanitizeEnv(toCodeBuddyEnv(sdkEnv, resolved));
       const runtimeSessionId = getRuntimeSessionId(options.sdkSessionId, 'codebuddy');
 
-      let child: ChildProcessWithoutNullStreams | null = null;
+      let child: ChildProcessByStdio<null, Readable, Readable> | null = null;
       let stdoutBuffer = '';
       let stderrBuffer = '';
       let closed = false;
@@ -370,7 +371,7 @@ export function streamCodeBuddy(options: ClaudeStreamOptions): ReadableStream<st
 
         child = spawn(codebuddyPath, buildArgs(cliOptions), {
           cwd: workingDirectory,
-          env,
+          env: env as NodeJS.ProcessEnv,
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
         });
@@ -382,6 +383,8 @@ export function streamCodeBuddy(options: ClaudeStreamOptions): ReadableStream<st
             }
           }, { once: true });
         }
+
+        if (!child) throw new Error('CodeBuddy process failed to start');
 
         child.stdout.on('data', (chunk: Buffer) => {
           stdoutBuffer += chunk.toString('utf-8');
