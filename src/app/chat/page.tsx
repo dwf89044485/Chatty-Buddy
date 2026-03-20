@@ -192,7 +192,8 @@ export default function NewChatPage() {
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (data) {
-            setHasProvider(data.provider === 'completed');
+            // CodeBuddy CLI has its own auth — skip provider check
+            setHasProvider(data.cliRuntime === 'codebuddy' || data.provider === 'completed');
           }
         })
         .catch(() => {});

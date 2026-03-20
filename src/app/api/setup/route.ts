@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSetting, setSetting, getDb } from '@/lib/db';
 import { findClaudeBinary } from '@/lib/platform';
+import { getCliRuntime } from '@/lib/cli-runtime';
 
 export async function GET() {
   try {
@@ -63,6 +64,7 @@ export async function GET() {
       provider,
       project,
       defaultProject: defaultProject || undefined,
+      cliRuntime: getCliRuntime(),
     });
   } catch {
     return NextResponse.json({ error: 'Failed to get setup state' }, { status: 500 });
