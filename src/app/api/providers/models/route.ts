@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAllProviders, getDefaultProviderId, setDefaultProviderId, getProvider, getModelsForProvider, getSetting } from '@/lib/db';
-import { getCliRuntime } from '@/lib/cli-runtime';
+import { getCliRuntime, normalizeCliRuntime } from '@/lib/cli-runtime';
 import { getContextWindow } from '@/lib/model-context';
+import { findCodeBuddyBinary, getCodeBuddySupportedModels } from '@/lib/platform';
 import { getDefaultModelsForProvider, inferProtocolFromLegacy, findPresetForLegacy } from '@/lib/provider-catalog';
 import type { Protocol } from '@/lib/provider-catalog';
 import type { ErrorResponse, ProviderModelGroup } from '@/types';
@@ -40,8 +41,14 @@ function deduplicateModels(models: ModelEntry[]): ModelEntry[] {
 const MEDIA_PROTOCOLS = new Set<string>(['gemini-image']);
 const MEDIA_PROVIDER_TYPES = new Set(['gemini-image']);
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const runtime = normalizeCliRuntime(request.nextUrl.searchParams.get('runtime') || getCliRuntime());
+    const codeBuddyDefaultModel = process.env.CTI_DEFAULT_MODEL || getSetting('default_model') || 'gpt-5.3-codex';
+    const envGroupModels = runtime === 'codebuddy'
+      ? [{ value: codeBuddyDefaultModel, label: codeBuddyDefaultModel }]
+      : DEFAULT_MODELS;
+
     const providers = getAllProviders();
     const groups: ProviderModelGroup[] = [];
 
@@ -56,10 +63,10 @@ export async function GET() {
     );
     groups.push({
       provider_id: 'env',
-      provider_name: 'Claude Code',
+      provider_name: runtime === 'codebuddy' ? 'CodeBuddy CLI' : 'Claude Code',
       provider_type: 'anthropic',
       ...(!envHasDirectCredentials ? { sdkProxyOnly: true } : {}),
-      models: DEFAULT_MODELS.map(m => {
+      models: envGroupModels.map(m => {
         const cw = getContextWindow(m.value);
         return cw != null ? { ...m, contextWindow: cw } : m;
       }),
@@ -68,7 +75,7 @@ export async function GET() {
     // If SDK has discovered models, use them for the env group
     try {
       const { getCachedModels, buildCapabilityCacheKey } = await import('@/lib/agent-sdk-capabilities');
-      const sdkModels = getCachedModels(buildCapabilityCacheKey('env', getCliRuntime()));
+      const sdkModels = getCachedModels(buildCapabilityCacheKey('env', runtime));
       if (sdkModels.length > 0) {
         groups[0].models = sdkModels.map(m => {
           const cw = getContextWindow(m.value);
@@ -82,6 +89,21 @@ export async function GET() {
             ...(cw != null ? { contextWindow: cw } : {}),
           };
         });
+      } else if (runtime === 'codebuddy') {
+        const codebuddyPath = findCodeBuddyBinary();
+        if (codebuddyPath) {
+          const supported = await getCodeBuddySupportedModels(codebuddyPath);
+          if (supported.length > 0) {
+            groups[0].models = supported.map((modelId) => {
+              const cw = getContextWindow(modelId);
+              return {
+                value: modelId,
+                label: modelId,
+                ...(cw != null ? { contextWindow: cw } : {}),
+              };
+            });
+          }
+        }
       }
     } catch {
       // SDK capabilities not available, keep defaults
@@ -204,6 +226,7 @@ export async function GET() {
     return NextResponse.json({
       groups,
       default_provider_id: defaultProviderId,
+      runtime,
     });
   } catch (error) {
     return NextResponse.json<ErrorResponse>(

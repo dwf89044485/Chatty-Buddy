@@ -14,6 +14,25 @@ import path from 'path';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const CLAUDE_FALLBACK_MODELS = new Set(['sonnet', 'opus', 'haiku']);
+
+function normalizeModelForRuntime(params: {
+  runtime: CliRuntime;
+  model?: string;
+  providerId?: string;
+  provider?: { id?: string } | undefined;
+}): string | undefined {
+  const { runtime, model, providerId, provider } = params;
+  if (!model || runtime !== 'codebuddy') return model;
+
+  const isEnvProvider = !provider || providerId === 'env' || !providerId || provider.id === 'env';
+  if (isEnvProvider && CLAUDE_FALLBACK_MODELS.has(model)) {
+    return undefined;
+  }
+
+  return model;
+}
+
 export async function POST(request: NextRequest) {
   let activeSessionId: string | undefined;
   let activeLockId: string | undefined;
@@ -323,6 +342,17 @@ Start by greeting the user and asking the first question.
     const activeRuntime = getCliRuntime();
     const mcpServers = loadRuntimeMcpServers(activeRuntime);
     const activeRuntimeSessionId = getRuntimeSessionId(session.sdk_session_id, activeRuntime);
+    const requestedModel = resolved.upstreamModel || resolved.model || effectiveModel;
+    const runtimeModel = normalizeModelForRuntime({
+      runtime: activeRuntime,
+      model: requestedModel,
+      providerId: effectiveProviderId || undefined,
+      provider: resolvedProvider,
+    });
+
+    if (!runtimeModel && requestedModel && activeRuntime === 'codebuddy' && CLAUDE_FALLBACK_MODELS.has(requestedModel)) {
+      console.warn(`[chat API] Ignoring incompatible Claude fallback model "${requestedModel}" for CodeBuddy runtime`);
+    }
 
     // Stream Claude response, using SDK session ID for resume if available
     console.log('[chat API] streamClaude params:', {
@@ -337,7 +367,7 @@ Start by greeting the user and asking the first question.
       sessionId: session_id,
       sdkSessionId: session.sdk_session_id || undefined,
       runtime: activeRuntime,
-      model: resolved.upstreamModel || resolved.model || effectiveModel,
+      model: runtimeModel,
       systemPrompt: finalSystemPrompt,
       workingDirectory: session.sdk_cwd || session.working_directory || undefined,
       abortController,

@@ -543,6 +543,29 @@ export async function getCodeBuddyVersion(codebuddyPath: string): Promise<string
   }
 }
 
+export async function getCodeBuddySupportedModels(codebuddyPath: string): Promise<string[]> {
+  try {
+    const { stdout, stderr } = await execFileAsync(codebuddyPath, ['--help'], {
+      timeout: 8000,
+      env: { ...process.env, PATH: getExpandedPath() },
+      shell: needsShell(codebuddyPath),
+    });
+
+    const helpText = `${stdout || ''}\n${stderr || ''}`;
+    const blockMatch = helpText.match(/--model\s+<model>[\s\S]*?supported:\s*\(([\s\S]*?)\)\s*(?:\n\s{2}-|$)/m);
+    if (!blockMatch || !blockMatch[1]) return [];
+
+    const normalized = blockMatch[1].replace(/\s+/g, ' ');
+
+    return normalized
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Find Git Bash (bash.exe) on Windows.
  * Returns the path to bash.exe or null if not found.

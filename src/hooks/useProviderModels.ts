@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import type { ProviderModelGroup } from '@/types';
+import type { CliRuntime, ProviderModelGroup } from '@/types';
 
 // Default Claude model options — used as fallback when API is unavailable
 export const DEFAULT_MODEL_OPTIONS = [
@@ -15,6 +15,34 @@ export interface UseProviderModelsReturn {
   currentModelOption: (typeof DEFAULT_MODEL_OPTIONS)[number];
 }
 
+function buildFallbackGroup(runtime: CliRuntime): ProviderModelGroup {
+  const codebuddyDefaultModel = 'gpt-5.3-codex';
+  return runtime === 'codebuddy'
+    ? {
+        provider_id: 'env',
+        provider_name: 'CodeBuddy CLI',
+        provider_type: 'anthropic',
+        models: [{ value: codebuddyDefaultModel, label: codebuddyDefaultModel }],
+      }
+    : {
+        provider_id: 'env',
+        provider_name: 'Anthropic',
+        provider_type: 'anthropic',
+        models: DEFAULT_MODEL_OPTIONS,
+      };
+}
+
+async function fetchCurrentRuntime(): Promise<CliRuntime> {
+  try {
+    const res = await fetch('/api/claude-status');
+    if (!res.ok) return 'claude';
+    const data = await res.json();
+    return data.runtime === 'codebuddy' ? 'codebuddy' : 'claude';
+  } catch {
+    return 'claude';
+  }
+}
+
 export function useProviderModels(
   providerId?: string,
   modelName?: string,
@@ -22,29 +50,20 @@ export function useProviderModels(
   const [providerGroups, setProviderGroups] = useState<ProviderModelGroup[]>([]);
   const [defaultProviderId, setDefaultProviderId] = useState<string>('');
 
-  const fetchProviderModels = useCallback(() => {
-    fetch('/api/providers/models')
+  const fetchProviderModels = useCallback(async () => {
+    const runtime = await fetchCurrentRuntime();
+    fetch(`/api/providers/models?runtime=${runtime}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.groups && data.groups.length > 0) {
           setProviderGroups(data.groups);
         } else {
-          setProviderGroups([{
-            provider_id: 'env',
-            provider_name: 'Anthropic',
-            provider_type: 'anthropic',
-            models: DEFAULT_MODEL_OPTIONS,
-          }]);
+          setProviderGroups([buildFallbackGroup(runtime)]);
         }
         setDefaultProviderId(data.default_provider_id || '');
       })
       .catch(() => {
-        setProviderGroups([{
-          provider_id: 'env',
-          provider_name: 'Anthropic',
-          provider_type: 'anthropic',
-          models: DEFAULT_MODEL_OPTIONS,
-        }]);
+        setProviderGroups([buildFallbackGroup(runtime)]);
         setDefaultProviderId('');
       });
   }, []);
