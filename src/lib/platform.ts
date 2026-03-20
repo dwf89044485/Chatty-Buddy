@@ -57,6 +57,21 @@ export type ClaudeInstallType = 'native' | 'homebrew' | 'npm' | 'bun' | 'unknown
 
 export type CodeBuddyInstallType = 'native' | 'npm' | 'bun' | 'unknown';
 
+const CODEBUDDY_FALLBACK_MODELS = [
+  'gpt-5.3-codex',
+  'gpt-5.2-codex',
+  'gpt-5.4',
+  'gpt-5.2',
+  'claude-sonnet-4.6',
+  'claude-opus-4.6',
+  'claude-haiku-4.5',
+  'gemini-2.5-pro',
+  'gemini-3.0-flash',
+  'gemini-3.1-pro',
+];
+
+let cachedCodeBuddyModels: string[] | null = null;
+
 export function classifyClaudePath(binPath: string): ClaudeInstallType {
   const home = os.homedir();
   const normalized = binPath.replace(/\\/g, '/');
@@ -544,25 +559,36 @@ export async function getCodeBuddyVersion(codebuddyPath: string): Promise<string
 }
 
 export async function getCodeBuddySupportedModels(codebuddyPath: string): Promise<string[]> {
+  if (cachedCodeBuddyModels && cachedCodeBuddyModels.length > 0) {
+    return cachedCodeBuddyModels;
+  }
+
   try {
     const { stdout, stderr } = await execFileAsync(codebuddyPath, ['--help'], {
-      timeout: 8000,
+      timeout: 5000,
       env: { ...process.env, PATH: getExpandedPath() },
       shell: needsShell(codebuddyPath),
     });
 
     const helpText = `${stdout || ''}\n${stderr || ''}`;
-    const blockMatch = helpText.match(/--model\s+<model>[\s\S]*?supported:\s*\(([\s\S]*?)\)\s*(?:\n\s{2}-|$)/m);
-    if (!blockMatch || !blockMatch[1]) return [];
+    // Match "Currently supported: (...)" pattern in the --model option description
+    const blockMatch = helpText.match(/--model\s+<model>[\s\S]*?(?:Currently\s+)?supported:\s*\(([\s\S]*?)\)/mi);
+    if (!blockMatch || !blockMatch[1]) {
+      cachedCodeBuddyModels = CODEBUDDY_FALLBACK_MODELS;
+      return cachedCodeBuddyModels;
+    }
 
     const normalized = blockMatch[1].replace(/\s+/g, ' ');
-
-    return normalized
+    const parsed = normalized
       .split(',')
       .map((m) => m.trim())
       .filter(Boolean);
+
+    cachedCodeBuddyModels = parsed.length > 0 ? parsed : CODEBUDDY_FALLBACK_MODELS;
+    return cachedCodeBuddyModels;
   } catch {
-    return [];
+    cachedCodeBuddyModels = CODEBUDDY_FALLBACK_MODELS;
+    return cachedCodeBuddyModels;
   }
 }
 

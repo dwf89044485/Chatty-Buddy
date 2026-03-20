@@ -1,7 +1,7 @@
 import type { CliRuntime, ClaudeStreamOptions } from '@/types';
 import { getCliRuntime, normalizeCliRuntime } from './cli-runtime';
 import { streamClaude, generateTextViaSdk as generateTextViaClaudeSdk, invalidateClaudeClientCache } from './claude-client';
-import { streamCodeBuddy } from './codebuddy-client';
+import { streamCodeBuddySdk } from './codebuddy-sdk-client';
 import { invalidateCodeBuddyPathCache } from './platform';
 
 export function resolveCliRuntime(runtime?: CliRuntime): CliRuntime {
@@ -9,10 +9,12 @@ export function resolveCliRuntime(runtime?: CliRuntime): CliRuntime {
 }
 
 export function streamAgentRuntime(options: ClaudeStreamOptions): ReadableStream<string> {
-  const runtime = resolveCliRuntime(options.runtime);
-  if (runtime === 'codebuddy') {
-    return streamCodeBuddy({ ...options, runtime });
+  const providerProtocol = options.provider?.protocol;
+
+  if (providerProtocol === 'codebuddy-sdk') {
+    return streamCodeBuddySdk({ ...options, runtime: 'codebuddy' });
   }
+
   return streamClaude({ ...options, runtime: 'claude' });
 }
 
@@ -24,10 +26,6 @@ export async function generateTextViaRuntime(params: {
   abortSignal?: AbortSignal;
   runtime?: CliRuntime;
 }): Promise<string> {
-  const runtime = resolveCliRuntime(params.runtime);
-  if (runtime === 'codebuddy') {
-    throw new Error('CodeBuddy runtime does not support SDK text generation for this endpoint yet.');
-  }
   return generateTextViaClaudeSdk(params);
 }
 

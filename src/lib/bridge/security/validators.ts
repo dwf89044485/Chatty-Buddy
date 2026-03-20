@@ -13,6 +13,7 @@ const MAX_INPUT_LENGTH = 32_000; // Claude's effective context limit
 const MAX_PATH_LENGTH = 1024;
 const SESSION_ID_PATTERN = /^[0-9a-f-]{32,64}$/i;
 const VALID_MODES = ['plan', 'code', 'ask'] as const;
+const MODEL_NAME_PATTERN = /^[A-Za-z0-9._:/-]{1,120}$/;
 
 /**
  * Patterns that indicate shell injection or dangerous input.
@@ -124,4 +125,14 @@ export function sanitizeInput(
  */
 export function validateMode(mode: string): mode is 'plan' | 'code' | 'ask' {
   return VALID_MODES.includes(mode as typeof VALID_MODES[number]);
+}
+
+/**
+ * Validate a model name format.
+ * Allows alphanumeric, dots, hyphens, underscores, colons, slashes.
+ * Max 120 characters.
+ */
+export function validateModel(model: string): boolean {
+  if (!model || !model.trim()) return false;
+  return MODEL_NAME_PATTERN.test(model.trim());
 }

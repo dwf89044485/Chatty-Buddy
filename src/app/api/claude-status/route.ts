@@ -82,7 +82,7 @@ export async function GET() {
 
     const codebuddyWarnings: string[] = [];
     if (codebuddyOtherInstalls.length > 0) {
-      codebuddyWarnings.push(`${codebuddyOtherInstalls.length} other CodeBuddy CLI installation(s) detected`);
+      codebuddyWarnings.push(`${codebuddyOtherInstalls.length} other CodeBuddy installation(s) detected`);
     }
 
     const active = runtime === 'codebuddy'

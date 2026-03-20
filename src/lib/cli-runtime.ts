@@ -17,7 +17,7 @@ export function getCliRuntime(): CliRuntime {
 }
 
 export function getCliRuntimeLabel(runtime: CliRuntime): string {
-  return runtime === 'codebuddy' ? 'CodeBuddy CLI' : 'Claude Code';
+  return runtime === 'codebuddy' ? 'CodeBuddy SDK' : 'Claude Code';
 }
 
 export function parseRuntimeSessionMap(value: string | null | undefined): RuntimeSessionMap {

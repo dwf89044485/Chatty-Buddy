@@ -349,6 +349,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
         { command: 'bind', description: 'Bind to existing session' },
         { command: 'cwd', description: 'Change working directory' },
         { command: 'mode', description: 'Switch mode: plan / code / ask' },
+        { command: 'model', description: 'Switch model for current session' },
         { command: 'status', description: 'Show current session status' },
         { command: 'sessions', description: 'List recent sessions' },
         { command: 'stop', description: 'Stop current task' },

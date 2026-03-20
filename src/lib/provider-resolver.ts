@@ -106,6 +106,15 @@ const ANTHROPIC_AUTH_ENV_KEYS = new Set([
 export function resolveProvider(opts: ResolveOptions = {}): ResolvedProvider {
   const effectiveProviderId = opts.providerId || opts.sessionProviderId || '';
 
+  if (effectiveProviderId === 'codebuddy-sdk') {
+    return buildVirtualCodeBuddySdkResolution(opts);
+  }
+  // Legacy compatibility: old sessions/localStorage may still reference codebuddy-cli.
+  // Route them to SDK provider behavior.
+  if (effectiveProviderId === 'codebuddy-cli') {
+    return buildVirtualCodeBuddySdkResolution(opts);
+  }
+
   let provider: ApiProvider | undefined;
 
   if (effectiveProviderId && effectiveProviderId !== 'env') {
@@ -514,6 +523,46 @@ export function toAiSdkConfig(
 }
 
 // ── Internal helpers ────────────────────────────────────────────
+
+function buildVirtualCodeBuddySdkResolution(opts: ResolveOptions): ResolvedProvider {
+  const model = opts.model || opts.sessionModel || getSetting('default_model') || 'gpt-5.3-codex';
+  const availableModels = getDefaultModelsForProvider('codebuddy-sdk', '');
+  const catalogEntry = availableModels.find(m => m.modelId === model);
+
+  const provider: ApiProvider = {
+    id: 'codebuddy-sdk',
+    name: 'CodeBuddy SDK',
+    provider_type: 'codebuddy-sdk',
+    protocol: 'codebuddy-sdk',
+    base_url: '',
+    api_key: '',
+    is_active: 0,
+    sort_order: 0,
+    extra_env: '{"CTI_RUNTIME":"codebuddy"}',
+    headers_json: '{}',
+    env_overrides_json: '{}',
+    role_models_json: `{"default":"${catalogEntry?.upstreamModelId || model}"}`,
+    options_json: '{}',
+    notes: 'Built-in virtual provider (no configuration required)',
+    created_at: '',
+    updated_at: '',
+  };
+
+  return {
+    provider,
+    protocol: 'codebuddy-sdk',
+    authStyle: 'env_only',
+    model,
+    upstreamModel: catalogEntry?.upstreamModelId || model,
+    modelDisplayName: catalogEntry?.displayName || model,
+    headers: {},
+    envOverrides: { CTI_RUNTIME: 'codebuddy' },
+    roleModels: { default: catalogEntry?.upstreamModelId || model },
+    hasCredentials: true,
+    availableModels,
+    settingSources: ['user', 'project', 'local'],
+  };
+}
 
 function buildResolution(
   provider: ApiProvider | undefined,

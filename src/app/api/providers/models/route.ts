@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getAllProviders, getDefaultProviderId, setDefaultProviderId, getProvider, getModelsForProvider, getSetting } from '@/lib/db';
-import { getCliRuntime, normalizeCliRuntime } from '@/lib/cli-runtime';
 import { getContextWindow } from '@/lib/model-context';
 import { findCodeBuddyBinary, getCodeBuddySupportedModels } from '@/lib/platform';
 import { getDefaultModelsForProvider, inferProtocolFromLegacy, findPresetForLegacy } from '@/lib/provider-catalog';
@@ -41,13 +40,10 @@ function deduplicateModels(models: ModelEntry[]): ModelEntry[] {
 const MEDIA_PROTOCOLS = new Set<string>(['gemini-image']);
 const MEDIA_PROVIDER_TYPES = new Set(['gemini-image']);
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const runtime = normalizeCliRuntime(request.nextUrl.searchParams.get('runtime') || getCliRuntime());
     const codeBuddyDefaultModel = process.env.CTI_DEFAULT_MODEL || getSetting('default_model') || 'gpt-5.3-codex';
-    const envGroupModels = runtime === 'codebuddy'
-      ? [{ value: codeBuddyDefaultModel, label: codeBuddyDefaultModel }]
-      : DEFAULT_MODELS;
+    const envGroupModels = DEFAULT_MODELS;
 
     const providers = getAllProviders();
     const groups: ProviderModelGroup[] = [];
@@ -63,7 +59,7 @@ export async function GET(request: NextRequest) {
     );
     groups.push({
       provider_id: 'env',
-      provider_name: runtime === 'codebuddy' ? 'CodeBuddy CLI' : 'Claude Code',
+      provider_name: 'Claude Code',
       provider_type: 'anthropic',
       ...(!envHasDirectCredentials ? { sdkProxyOnly: true } : {}),
       models: envGroupModels.map(m => {
@@ -72,42 +68,35 @@ export async function GET(request: NextRequest) {
       }),
     });
 
-    // If SDK has discovered models, use them for the env group
-    try {
-      const { getCachedModels, buildCapabilityCacheKey } = await import('@/lib/agent-sdk-capabilities');
-      const sdkModels = getCachedModels(buildCapabilityCacheKey('env', runtime));
-      if (sdkModels.length > 0) {
-        groups[0].models = sdkModels.map(m => {
-          const cw = getContextWindow(m.value);
-          return {
-            value: m.value,
-            label: m.displayName,
-            description: m.description,
-            supportsEffort: m.supportsEffort,
-            supportedEffortLevels: m.supportedEffortLevels,
-            supportsAdaptiveThinking: m.supportsAdaptiveThinking,
-            ...(cw != null ? { contextWindow: cw } : {}),
-          };
-        });
-      } else if (runtime === 'codebuddy') {
-        const codebuddyPath = findCodeBuddyBinary();
-        if (codebuddyPath) {
-          const supported = await getCodeBuddySupportedModels(codebuddyPath);
-          if (supported.length > 0) {
-            groups[0].models = supported.map((modelId) => {
-              const cw = getContextWindow(modelId);
-              return {
-                value: modelId,
-                label: modelId,
-                ...(cw != null ? { contextWindow: cw } : {}),
-              };
-            });
-          }
+    // Prepare zero-config built-in CodeBuddy SDK provider
+    let builtInCodeBuddyModels = [{ value: codeBuddyDefaultModel, label: codeBuddyDefaultModel }];
+    const codebuddyPath = findCodeBuddyBinary();
+
+    if (codebuddyPath) {
+      try {
+        const supported = await getCodeBuddySupportedModels(codebuddyPath);
+        if (supported.length > 0) {
+          builtInCodeBuddyModels = supported.map((modelId) => {
+            const cw = getContextWindow(modelId);
+            return {
+              value: modelId,
+              label: modelId,
+              ...(cw != null ? { contextWindow: cw } : {}),
+            };
+          });
         }
+      } catch {
+        // keep fallback model list
       }
-    } catch {
-      // SDK capabilities not available, keep defaults
     }
+
+    groups.push({
+      provider_id: 'codebuddy-sdk',
+      provider_name: 'CodeBuddy SDK',
+      provider_type: 'codebuddy-sdk',
+      sdkProxyOnly: true,
+      models: builtInCodeBuddyModels,
+    });
 
     // Build a group for each configured provider
     for (const provider of providers) {
@@ -117,6 +106,13 @@ export async function GET(request: NextRequest) {
 
       // Skip media-only providers in chat model selector
       if (MEDIA_PROTOCOLS.has(protocol) || MEDIA_PROVIDER_TYPES.has(provider.provider_type)) continue;
+      // Skip DB-configured CodeBuddy SDK providers — the built-in virtual
+      // provider is always exposed as provider_id='codebuddy-sdk'.
+      if (
+        protocol === 'codebuddy-sdk' ||
+        provider.provider_type === 'codebuddy-sdk' ||
+        provider.provider_type === 'codebuddy-cli'
+      ) continue;
 
       // Get models: DB provider_models first, then catalog defaults, then env fallback
       let rawModels: ModelEntry[];
@@ -226,7 +222,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       groups,
       default_provider_id: defaultProviderId,
-      runtime,
     });
   } catch (error) {
     return NextResponse.json<ErrorResponse>(

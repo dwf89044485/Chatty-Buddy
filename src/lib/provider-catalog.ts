@@ -21,7 +21,8 @@ export type Protocol =
   | 'bedrock'             // AWS Bedrock (env-based auth, CLAUDE_CODE_USE_BEDROCK)
   | 'vertex'              // Google Vertex AI (env-based auth, CLAUDE_CODE_USE_VERTEX)
   | 'google'              // Google Generative AI (Gemini text)
-  | 'gemini-image';       // Google Gemini image generation
+  | 'gemini-image'        // Google Gemini image generation
+  | 'codebuddy-sdk';      // CodeBuddy Agent SDK runtime
 
 /**
  * How the provider authenticates: which env var to inject the API key into.
@@ -135,6 +136,27 @@ export const VENDOR_PRESETS: VendorPreset[] = [
     defaultModels: ANTHROPIC_DEFAULT_MODELS,
     fields: ['api_key'],
     iconKey: 'anthropic',
+  },
+
+  // ── CodeBuddy SDK ──
+  {
+    key: 'codebuddy-sdk',
+    name: 'CodeBuddy SDK',
+    description: 'CodeBuddy Agent SDK provider (uses local CodeBuddy auth/session)',
+    descriptionZh: 'CodeBuddy Agent SDK 提供商（使用本地 CodeBuddy 认证与会话）',
+    protocol: 'codebuddy-sdk',
+    authStyle: 'env_only',
+    baseUrl: '',
+    defaultEnvOverrides: { CTI_RUNTIME: 'codebuddy' },
+    defaultModels: [
+      { modelId: 'gpt-5.3-codex', displayName: 'gpt-5.3-codex', role: 'default' },
+      { modelId: 'gpt-5.2-codex', displayName: 'gpt-5.2-codex', role: 'reasoning' },
+      { modelId: 'gpt-5.4', displayName: 'gpt-5.4', role: 'sonnet' },
+    ],
+    defaultRoleModels: { default: 'gpt-5.3-codex' },
+    fields: ['name', 'env_overrides', 'model_names'],
+    iconKey: 'codebuddy',
+    sdkProxyOnly: true,
   },
 
   // ── Anthropic Third-party (generic) ──
@@ -481,6 +503,8 @@ export function inferProtocolFromLegacy(
   if (providerType === 'bedrock') return 'bedrock';
   if (providerType === 'vertex') return 'vertex';
   if (providerType === 'gemini-image') return 'gemini-image';
+  if (providerType === 'codebuddy-sdk') return 'codebuddy-sdk';
+  if (providerType === 'codebuddy-cli') return 'codebuddy-sdk';
 
   // For 'custom' type, check if the base_url matches a known Anthropic-compatible vendor
   if (providerType === 'custom') {
@@ -557,6 +581,7 @@ export function findPresetForLegacy(baseUrl: string, providerType: string, proto
   if (providerType === 'vertex') return VENDOR_PRESETS.find(p => p.key === 'vertex');
   if (providerType === 'openrouter') return VENDOR_PRESETS.find(p => p.key === 'openrouter');
   if (providerType === 'gemini-image') return VENDOR_PRESETS.find(p => p.key === 'gemini-image');
+  if (providerType === 'codebuddy-sdk') return VENDOR_PRESETS.find(p => p.key === 'codebuddy-sdk');
   if (providerType === 'anthropic' && baseUrl === 'https://api.anthropic.com') {
     return VENDOR_PRESETS.find(p => p.key === 'anthropic-official');
   }
@@ -601,6 +626,13 @@ export function getDefaultModelsForProvider(
   if (protocol === 'anthropic' || protocol === 'openrouter' || protocol === 'bedrock' || protocol === 'vertex') {
     return ANTHROPIC_DEFAULT_MODELS;
   }
+
+  if (protocol === 'codebuddy-sdk') {
+    return (
+      VENDOR_PRESETS.find((p) => p.key === 'codebuddy-sdk')?.defaultModels || []
+    );
+  }
+
 
   return [];
 }

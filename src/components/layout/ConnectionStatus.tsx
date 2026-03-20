@@ -63,7 +63,7 @@ export function ConnectionStatus() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const activeRuntime = status?.runtime === 'codebuddy' ? 'codebuddy' : 'claude';
-  const runtimeLabel = activeRuntime === 'codebuddy' ? 'CodeBuddy CLI' : 'Claude Code';
+  const runtimeLabel = activeRuntime === 'codebuddy' ? 'CodeBuddy SDK' : 'Claude Code';
 
   const isElectron =
     typeof window !== "undefined" &&
@@ -332,7 +332,7 @@ export function ConnectionStatus() {
               ) : (
                 <>
                   <div>
-                    <h4 className="font-medium mb-1.5">1. Install CodeBuddy CLI</h4>
+                    <h4 className="font-medium mb-1.5">1. Install CodeBuddy</h4>
                     <code className="block rounded-md bg-muted px-3 py-2 text-xs">
                       codebuddy --version
                     </code>

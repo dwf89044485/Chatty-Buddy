@@ -44,25 +44,10 @@ export default function NewChatPage() {
   const [recentProjects, setRecentProjects] = useState<string[]>([]);
   const [hasProvider, setHasProvider] = useState(true); // assume true until checked
   const [mode] = useState('code');
-  const [currentModel, setCurrentModel] = useState(() => {
-    if (typeof window === 'undefined') return 'sonnet';
-    // One-time migration: clear stale model/provider from pre-0.38 installs
-    if (!localStorage.getItem('codepilot:migration-038')) {
-      localStorage.removeItem('codepilot:last-model');
-      localStorage.removeItem('codepilot:last-provider-id');
-      localStorage.setItem('codepilot:migration-038', '1');
-      return 'sonnet';
-    }
-    return localStorage.getItem('codepilot:last-model') || 'sonnet';
-  });
-  const [currentProviderId, setCurrentProviderId] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    // Migration already ran above (or was already done), just read
-    if (!localStorage.getItem('codepilot:migration-038')) {
-      return '';
-    }
-    return localStorage.getItem('codepilot:last-provider-id') || '';
-  });
+  // Keep SSR/CSR initial render deterministic to avoid hydration mismatch.
+  // Read localStorage in an effect after hydration.
+  const [currentModel, setCurrentModel] = useState('sonnet');
+  const [currentProviderId, setCurrentProviderId] = useState('');
   const [pendingPermission, setPendingPermission] = useState<PermissionRequestEvent | null>(null);
   const [permissionResolved, setPermissionResolved] = useState<'allow' | 'deny' | null>(null);
   const [streamingToolOutput, setStreamingToolOutput] = useState('');
@@ -74,6 +59,25 @@ export default function NewChatPage() {
   // Provider options (thinking mode + 1M context)
   const [thinkingMode, setThinkingMode] = useState<string>('adaptive');
   const [context1m, setContext1m] = useState(false);
+
+  // Restore model/provider from localStorage after hydration.
+  useEffect(() => {
+    // One-time migration: clear stale model/provider from pre-0.38 installs
+    if (!localStorage.getItem('codepilot:migration-038')) {
+      localStorage.removeItem('codepilot:last-model');
+      localStorage.removeItem('codepilot:last-provider-id');
+      localStorage.setItem('codepilot:migration-038', '1');
+    }
+
+    const restoredModel = localStorage.getItem('codepilot:last-model') || 'sonnet';
+    const savedProviderId = localStorage.getItem('codepilot:last-provider-id') || '';
+    const restoredProviderId = savedProviderId === 'codebuddy-cli' ? 'codebuddy-sdk' : savedProviderId;
+    if (savedProviderId === 'codebuddy-cli') {
+      localStorage.setItem('codepilot:last-provider-id', 'codebuddy-sdk');
+    }
+    setCurrentModel(restoredModel);
+    setCurrentProviderId(restoredProviderId);
+  }, []);
 
   // Fetch provider-specific options (with abort to prevent stale responses on fast switch)
   useEffect(() => {
@@ -188,17 +192,22 @@ export default function NewChatPage() {
   // Check provider availability — only 'completed' counts, 'skipped' means user deferred but has no real credentials
   useEffect(() => {
     const checkProvider = () => {
+      let savedProviderId = localStorage.getItem('codepilot:last-provider-id');
+      if (savedProviderId === 'codebuddy-cli') {
+        savedProviderId = 'codebuddy-sdk';
+        localStorage.setItem('codepilot:last-provider-id', 'codebuddy-sdk');
+      }
+      const builtInCodeBuddySelected = savedProviderId === 'codebuddy-sdk';
+
       fetch('/api/setup')
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (data) {
-            // CodeBuddy CLI has its own auth — skip provider check
-            setHasProvider(data.cliRuntime === 'codebuddy' || data.provider === 'completed');
+            setHasProvider(data.provider === 'completed' || builtInCodeBuddySelected);
           }
         })
         .catch(() => {});
       // Sync provider/model from localStorage, validating against available providers
-      const savedProviderId = localStorage.getItem('codepilot:last-provider-id');
       const savedModel = localStorage.getItem('codepilot:last-model');
       fetch('/api/providers/models')
         .then(r => r.ok ? r.json() : null)

@@ -19,7 +19,7 @@ import { deliver, deliverRendered, chunkText } from './delivery-layer';
 import { PLATFORM_LIMITS as limits } from './types';
 import { markdownToTelegramChunks } from './markdown/telegram';
 import { markdownToDiscordChunks } from './markdown/discord';
-import { getSetting, insertAuditLog, updateChannelBinding } from '../db';
+import { getSetting, insertAuditLog, updateChannelBinding, updateSessionModel } from '../db';
 import { setBridgeModeActive } from '../telegram-bot';
 import { escapeHtml } from './adapters/telegram-utils';
 import {
@@ -28,6 +28,7 @@ import {
   isDangerousInput,
   sanitizeInput,
   validateMode,
+  validateModel,
 } from './security/validators';
 import { ChannelPluginAdapter } from '../channels/channel-plugin-adapter';
 
@@ -921,6 +922,44 @@ async function handleCommand(
       break;
     }
 
+    case '/model': {
+      const binding = router.resolve(msg.address);
+      const currentModel = binding.model || 'default';
+
+      if (!args) {
+        response = [
+          '<b>Current model</b>',
+          '',
+          `<code>${escapeHtml(currentModel)}</code>`,
+          '',
+          'Usage: <code>/model &lt;model_name&gt;</code>',
+        ].join('\n');
+        break;
+      }
+
+      const targetModel = args.trim();
+      if (!validateModel(targetModel)) {
+        response = [
+          'Invalid model name format.',
+          '',
+          'Only letters, digits, and <code>.-_:/</code> are allowed.',
+          'Example: <code>/model gpt-5.3-codex</code>',
+        ].join('\n');
+        break;
+      }
+
+      router.updateBinding(binding.id, { model: targetModel, sdkSessionId: '' });
+      updateSessionModel(binding.codepilotSessionId, targetModel);
+
+      const st = getState();
+      const runningHint = st.activeTasks.has(binding.codepilotSessionId)
+        ? '\nCurrent running task is not interrupted. New model applies to next message.'
+        : '';
+
+      response = `Model switched to <code>${escapeHtml(targetModel)}</code>.${runningHint}`;
+      break;
+    }
+
     case '/status': {
       const binding = router.resolve(msg.address);
       response = [
@@ -1222,6 +1261,7 @@ async function handleCommand(
         '/cwd /path - Change CWD, reset context',
         '/bind &lt;session_id&gt; - Bind to existing session',
         '/mode plan|code|ask - Change mode',
+        '/model <name> - Switch model for current session',
         '/status - Show session / CWD / mode / model',
         '/sessions - List recent sessions',
         '/stop - Stop current task',

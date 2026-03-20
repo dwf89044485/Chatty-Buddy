@@ -316,6 +316,9 @@ export function findMatchingPreset(provider: ApiProvider): QuickPreset | undefin
   if (provider.provider_type === "vertex") return QUICK_PRESETS.find(p => p.key === "vertex");
   if (provider.provider_type === "openrouter") return QUICK_PRESETS.find(p => p.key === "openrouter");
   if (provider.provider_type === "gemini-image") return QUICK_PRESETS.find(p => p.key === "gemini-image");
+  if (provider.provider_type === "codebuddy-sdk" || provider.protocol === "codebuddy-sdk") {
+    return QUICK_PRESETS.find(p => p.key === "codebuddy-sdk");
+  }
   if (provider.provider_type === "anthropic" && provider.base_url === "https://api.anthropic.com") {
     return QUICK_PRESETS.find(p => p.key === "anthropic-official");
   }

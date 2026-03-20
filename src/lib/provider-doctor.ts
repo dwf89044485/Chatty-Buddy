@@ -528,10 +528,10 @@ async function runFeaturesProbe(): Promise<ProbeResult> {
 
     if (staleSessions.length > 0) {
       findings.push({
-        severity: 'warn',
-        code: 'features.stale-session-id',
-        message: `${staleSessions.length} session(s) have stored sdk_session_id — may cause resume issues if stale`,
-        detail: `Session: ${staleSessions[0].id.slice(0, 12)}..., sdk_session_id: ${staleSessions[0].sdk_session_id.slice(0, 8)}...`,
+        severity: 'ok',
+        code: 'features.session-resume-state',
+        message: `${staleSessions.length} session(s) store sdk_session_id for resume`,
+        detail: `Latest session: ${staleSessions[0].id.slice(0, 12)}..., sdk_session_id: ${staleSessions[0].sdk_session_id.slice(0, 8)}...`,
       });
     }
   } catch {
