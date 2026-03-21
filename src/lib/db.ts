@@ -1184,6 +1184,13 @@ export function getProviderOptions(providerId: string): import('@/types').Provid
       context_1m: context1m,
     };
   }
+  if (providerId === 'codebuddy') { // [CodeBuddy]
+    // CodeBuddy SDK uses the same thinking/context settings as env
+    const thinkingMode = getSetting('codebuddy_thinking_mode') || getSetting('thinking_mode') || 'adaptive';
+    return {
+      thinking_mode: thinkingMode as 'adaptive' | 'enabled' | 'disabled',
+    };
+  }
   const provider = getProvider(providerId);
   if (!provider) return {};
   try {
@@ -1208,6 +1215,10 @@ export function setProviderOptions(providerId: string, options: import('@/types'
   if (providerId === 'env') {
     if (options.thinking_mode !== undefined) setSetting('thinking_mode', options.thinking_mode);
     if (options.context_1m !== undefined) setSetting('context_1m', options.context_1m ? 'true' : '');
+    return;
+  }
+  if (providerId === 'codebuddy') { // [CodeBuddy]
+    if (options.thinking_mode !== undefined) setSetting('codebuddy_thinking_mode', options.thinking_mode);
     return;
   }
   const db = getDb();

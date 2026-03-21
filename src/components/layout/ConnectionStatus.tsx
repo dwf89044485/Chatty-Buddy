@@ -22,6 +22,13 @@ interface ClaudeInstallInfo {
   type: "native" | "homebrew" | "npm" | "bun" | "unknown";
 }
 
+// [CodeBuddy] Runtime info for dual-runtime support
+interface RuntimeInfo {
+  connected: boolean;
+  version: string | null;
+  binaryPath?: string | null;
+}
+
 interface ClaudeStatus {
   connected: boolean;
   version: string | null;
@@ -30,6 +37,11 @@ interface ClaudeStatus {
   otherInstalls?: ClaudeInstallInfo[];
   missingGit?: boolean;
   warnings?: string[];
+  runtime?: 'claude' | 'codebuddy'; // [CodeBuddy]
+  runtimes?: { // [CodeBuddy]
+    claude: RuntimeInfo;
+    codebuddy: RuntimeInfo;
+  };
 }
 
 const BASE_INTERVAL = 30_000; // 30s
@@ -42,6 +54,11 @@ const INSTALL_TYPE_LABELS: Record<string, string> = {
   npm: "npm (deprecated)",
   bun: "bun",
   unknown: "Unknown",
+};
+
+const RUNTIME_LABELS: Record<string, string> = {
+  claude: 'Claude Code',
+  codebuddy: 'CodeBuddy',
 };
 
 function getUninstallAdvice(type: string): string | null {
@@ -140,7 +157,7 @@ export function ConnectionStatus() {
       if (!dismissed) {
         autoPromptedRef.current = true;
         window.dispatchEvent(new CustomEvent('open-setup-center', { detail: { initialCard: 'claude' } }));
-        localStorage.setItem("codepilot:install-wizard-dismissed", "1");  
+        localStorage.setItem("codepilot:install-wizard-dismissed", "1");
       }
     }
   }, [status, dialogOpen]);
@@ -153,7 +170,18 @@ export function ConnectionStatus() {
     }
   }, []);
 
-  const connected = status?.connected ?? false;
+  // [CodeBuddy] Derive active runtime info — when the active runtime is codebuddy,
+  // show CodeBuddy's connection status instead of Claude's.
+  const activeRuntime = status?.runtime || 'claude';
+  const activeRuntimeInfo: RuntimeInfo | undefined = status?.runtimes?.[activeRuntime];
+  const activeLabel = RUNTIME_LABELS[activeRuntime] || 'Claude Code';
+
+  // Use the active runtime's connected/version/binaryPath when available,
+  // otherwise fall back to the top-level fields (backward compat).
+  const connected = activeRuntimeInfo?.connected ?? status?.connected ?? false;
+  const activeVersion = activeRuntimeInfo?.version ?? status?.version ?? null;
+  const activeBinaryPath = activeRuntimeInfo?.binaryPath ?? status?.binaryPath ?? null;
+
   const hasConflicts = (status?.otherInstalls?.length ?? 0) > 0;
   const missingGit = status?.missingGit ?? false;
   const hasWarnings = hasConflicts || missingGit;
@@ -212,8 +240,8 @@ export function ConnectionStatus() {
               {connected
                 ? missingGit
                   ? t('connection.missingGitDesc')
-                  : `Claude Code CLI v${status?.version} is running and ready.`
-                : "Claude Code CLI is required to use this application."}
+                  : `${activeLabel} v${activeVersion ?? ''} is running and ready.`
+                : `${activeLabel} CLI is required to use this application.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -222,16 +250,43 @@ export function ConnectionStatus() {
               <div className="flex items-center gap-3 rounded-lg bg-status-success-muted px-4 py-3">
                 <span className="block h-2.5 w-2.5 shrink-0 rounded-full bg-status-success" />
                 <div>
-                  <p className="font-medium text-status-success-foreground">Active</p>
+                  <p className="font-medium text-status-success-foreground">Active — {activeLabel}</p>
                   <p className="text-xs text-muted-foreground">
-                    {t('connection.version', { version: status?.version ?? '' })}
-                    {status?.installType && ` (${INSTALL_TYPE_LABELS[status.installType] || status.installType})`}
+                    {t('connection.version', { version: activeVersion ?? '' })}
+                    {activeRuntime === 'claude' && status?.installType && ` (${INSTALL_TYPE_LABELS[status.installType] || status.installType})`}
                   </p>
-                  {status?.binaryPath && (
-                    <p className="text-xs text-muted-foreground font-mono">{status.binaryPath}</p>
+                  {activeBinaryPath && (
+                    <p className="text-xs text-muted-foreground font-mono">{activeBinaryPath}</p>
                   )}
                 </div>
               </div>
+
+              {/* Show the other runtime's status as secondary info */}
+              {status?.runtimes && (() => {
+                const otherKey = activeRuntime === 'claude' ? 'codebuddy' : 'claude';
+                const other = status.runtimes[otherKey];
+                const otherLabel = RUNTIME_LABELS[otherKey];
+                if (!other) return null;
+                return (
+                  <div className={cn(
+                    "flex items-center gap-3 rounded-lg px-4 py-2",
+                    other.connected ? "bg-muted/50" : "bg-status-error-muted/50"
+                  )}>
+                    <span className={cn(
+                      "block h-2 w-2 shrink-0 rounded-full",
+                      other.connected ? "bg-muted-foreground/40" : "bg-status-error/50"
+                    )} />
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        {otherLabel} — {other.connected ? `v${other.version}` : 'Not detected'}
+                      </p>
+                      {other.binaryPath && (
+                        <p className="text-[10px] text-muted-foreground/70 font-mono">{other.binaryPath}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Conflict warning */}
               {hasConflicts && (
@@ -287,45 +342,59 @@ export function ConnectionStatus() {
                 <p className="font-medium text-status-error-foreground">Not detected</p>
               </div>
 
-              <div>
-                <h4 className="font-medium mb-1.5">1. {t('connection.installClaude')}</h4>
-                {navigator.platform?.startsWith('Win') ? (
+              {activeRuntime === 'codebuddy' ? (
+                <div>
+                  <p className="text-muted-foreground mb-2">
+                    {t('connection.cbNotInstalled')}
+                  </p>
+                  <h4 className="font-medium mb-1.5">{t('connection.cbInstallTitle')}</h4>
                   <code className="block rounded-md bg-muted px-3 py-2 text-xs">
-                    irm https://claude.ai/install.ps1 | iex
+                    npm install -g @tencent-ai/codebuddy-code
                   </code>
-                ) : (
-                  <code className="block rounded-md bg-muted px-3 py-2 text-xs">
-                    curl -fsSL https://claude.ai/install.sh | bash
-                  </code>
-                )}
-              </div>
-
-              <div>
-                <h4 className="font-medium mb-1.5">2. Authenticate</h4>
-                <code className="block rounded-md bg-muted px-3 py-2 text-xs">
-                  claude login
-                </code>
-              </div>
-
-              <div>
-                <h4 className="font-medium mb-1.5">3. Verify Installation</h4>
-                <code className="block rounded-md bg-muted px-3 py-2 text-xs">
-                  claude --version
-                </code>
-              </div>
-
-              {isElectron && (
-                <div className="pt-2 border-t">
-                  <Button
-                    onClick={() => {
-                      setDialogOpen(false);
-                      setWizardOpen(true);
-                    }}
-                    className="w-full"
-                  >
-                    {t('connection.installAuto')}
-                  </Button>
                 </div>
+              ) : (
+                <>
+                  <div>
+                    <h4 className="font-medium mb-1.5">1. {t('connection.installClaude')}</h4>
+                    {navigator.platform?.startsWith('Win') ? (
+                      <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                        irm https://claude.ai/install.ps1 | iex
+                      </code>
+                    ) : (
+                      <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                        curl -fsSL https://claude.ai/install.sh | bash
+                      </code>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium mb-1.5">2. Authenticate</h4>
+                    <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                      claude login
+                    </code>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium mb-1.5">3. Verify Installation</h4>
+                    <code className="block rounded-md bg-muted px-3 py-2 text-xs">
+                      claude --version
+                    </code>
+                  </div>
+
+                  {isElectron && (
+                    <div className="pt-2 border-t">
+                      <Button
+                        onClick={() => {
+                          setDialogOpen(false);
+                          setWizardOpen(true);
+                        }}
+                        className="w-full"
+                      >
+                        {t('connection.installAuto')}
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

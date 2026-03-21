@@ -4,6 +4,8 @@ import { getContextWindow } from '@/lib/model-context';
 import { getDefaultModelsForProvider, inferProtocolFromLegacy, findPresetForLegacy } from '@/lib/provider-catalog';
 import type { Protocol } from '@/lib/provider-catalog';
 import type { ErrorResponse, ProviderModelGroup } from '@/types';
+import { findCodeBuddyBinary } from '@/lib/platform'; // [CodeBuddy]
+import { getCliRuntime } from '@/lib/cli-runtime'; // [CodeBuddy]
 
 // Default Claude model options (for the built-in 'env' provider)
 const DEFAULT_MODELS = [
@@ -43,44 +45,112 @@ export async function GET() {
   try {
     const providers = getAllProviders();
     const groups: ProviderModelGroup[] = [];
+    const cliRuntime = getCliRuntime(); // [CodeBuddy]
 
-    // Always show the built-in Claude Code provider group.
-    // Mark it as sdkProxyOnly if no direct API credentials exist — in that case
-    // the env provider only works through the Claude Code SDK subprocess, not the
-    // Vercel AI SDK text generation path used by features like AI Describe.
-    const envHasDirectCredentials = !!(
-      process.env.ANTHROPIC_API_KEY ||
-      process.env.ANTHROPIC_AUTH_TOKEN ||
-      getSetting('anthropic_auth_token')
-    );
-    groups.push({
-      provider_id: 'env',
-      provider_name: 'Claude Code',
-      provider_type: 'anthropic',
-      ...(!envHasDirectCredentials ? { sdkProxyOnly: true } : {}),
-      models: DEFAULT_MODELS.map(m => {
-        const cw = getContextWindow(m.value);
-        return cw != null ? { ...m, contextWindow: cw } : m;
-      }),
-    });
+    // [CodeBuddy] Show the built-in CLI provider group based on the active runtime.
+    // Only one virtual provider is shown at a time — the active one.
+    if (cliRuntime === 'codebuddy') {
+      // CodeBuddy SDK provider group — full model list from CLI --help (IOA environment)
+      const CODEBUDDY_DEFAULT_MODELS = [
+        // Claude models
+        { value: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
+        { value: 'claude-4.5', label: 'Claude Sonnet 4.5' },
+        { value: 'claude-opus-4.6', label: 'Claude Opus 4.6' },
+        { value: 'claude-opus-4.5', label: 'Claude Opus 4.5' },
+        { value: 'claude-haiku-4.5', label: 'Claude Haiku 4.5' },
+        // GPT models
+        { value: 'gpt-5.4', label: 'GPT-5.4' },
+        { value: 'gpt-5.3-codex', label: 'GPT-5.3-Codex' },
+        { value: 'gpt-5.2', label: 'GPT-5.2' },
+        { value: 'gpt-5.2-codex', label: 'GPT-5.2-Codex' },
+        { value: 'gpt-5.1', label: 'GPT-5.1' },
+        { value: 'gpt-5.1-codex', label: 'GPT-5.1-Codex' },
+        { value: 'gpt-5.1-codex-max', label: 'GPT-5.1-Codex-Max' },
+        { value: 'gpt-5.1-codex-mini', label: 'GPT-5.1-Codex-Mini' },
+        // Gemini models
+        { value: 'gemini-3.1-pro', label: 'Gemini-3.1-Pro' },
+        { value: 'gemini-3.0-flash', label: 'Gemini-3.0-Flash' },
+        { value: 'gemini-2.5-pro', label: 'Gemini-2.5-Pro' },
+        { value: 'gemini-3.1-flash-lite', label: 'Gemini-3.1-Flash-Lite' },
+        // GLM models (IOA)
+        { value: 'glm-5.0-turbo-ioa', label: 'GLM-5.0-Turbo' },
+        { value: 'glm-5.0-ioa', label: 'GLM-5.0' },
+        { value: 'glm-4.7-ioa', label: 'GLM-4.7' },
+        // MiniMax models (IOA)
+        { value: 'minimax-m2.7-ioa', label: 'MiniMax-M2.7' },
+        { value: 'minimax-m2.5-ioa', label: 'MiniMax-M2.5' },
+        // Kimi (IOA)
+        { value: 'kimi-k2.5-ioa', label: 'Kimi-K2.5' },
+        // DeepSeek (IOA)
+        { value: 'deepseek-v3-2-volc-ioa', label: 'DeepSeek-V3.2' },
+        // Hunyuan (IOA)
+        { value: 'hunyuan-2.0-thinking-ioa', label: 'Hunyuan-2.0-Thinking' },
+      ];
+      groups.push({
+        provider_id: 'codebuddy',
+        provider_name: 'CodeBuddy SDK',
+        provider_type: 'codebuddy',
+        sdkProxyOnly: true,
+        models: CODEBUDDY_DEFAULT_MODELS.map(m => {
+          const cw = getContextWindow(m.value);
+          return cw != null ? { ...m, contextWindow: cw } : m;
+        }),
+      });
+    } else {
+      // Claude Code provider group (default)
+      const envHasDirectCredentials = !!(
+        process.env.ANTHROPIC_API_KEY ||
+        process.env.ANTHROPIC_AUTH_TOKEN ||
+        getSetting('anthropic_auth_token')
+      );
+      groups.push({
+        provider_id: 'env',
+        provider_name: 'Claude Code',
+        provider_type: 'anthropic',
+        ...(!envHasDirectCredentials ? { sdkProxyOnly: true } : {}),
+        models: DEFAULT_MODELS.map(m => {
+          const cw = getContextWindow(m.value);
+          return cw != null ? { ...m, contextWindow: cw } : m;
+        }),
+      });
+    }
 
-    // If SDK has discovered models, use them for the env group
+    // If SDK has discovered models, override hardcoded defaults with live data
     try {
       const { getCachedModels } = await import('@/lib/agent-sdk-capabilities');
-      const sdkModels = getCachedModels('env');
-      if (sdkModels.length > 0) {
-        groups[0].models = sdkModels.map(m => {
-          const cw = getContextWindow(m.value);
-          return {
-            value: m.value,
-            label: m.displayName,
-            description: m.description,
-            supportsEffort: m.supportsEffort,
-            supportedEffortLevels: m.supportedEffortLevels,
-            supportsAdaptiveThinking: m.supportsAdaptiveThinking,
-            ...(cw != null ? { contextWindow: cw } : {}),
-          };
-        });
+
+      if (cliRuntime === 'codebuddy') {
+        const cbSdkModels = getCachedModels('codebuddy');
+        if (cbSdkModels.length > 0) {
+          groups[0].models = cbSdkModels.map(m => {
+            const cw = getContextWindow(m.value);
+            return {
+              value: m.value,
+              label: m.displayName,
+              description: m.description,
+              supportsEffort: m.supportsEffort,
+              supportedEffortLevels: m.supportedEffortLevels,
+              supportsAdaptiveThinking: m.supportsAdaptiveThinking,
+              ...(cw != null ? { contextWindow: cw } : {}),
+            };
+          });
+        }
+      } else {
+        const sdkModels = getCachedModels('env');
+        if (sdkModels.length > 0) {
+          groups[0].models = sdkModels.map(m => {
+            const cw = getContextWindow(m.value);
+            return {
+              value: m.value,
+              label: m.displayName,
+              description: m.description,
+              supportsEffort: m.supportsEffort,
+              supportedEffortLevels: m.supportedEffortLevels,
+              supportsAdaptiveThinking: m.supportsAdaptiveThinking,
+              ...(cw != null ? { contextWindow: cw } : {}),
+            };
+          });
+        }
       }
     } catch {
       // SDK capabilities not available, keep defaults

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSetting, setSetting, getDb } from '@/lib/db';
 import { findClaudeBinary } from '@/lib/platform';
+import { findCodeBuddyBinary } from '@/lib/platform'; // [CodeBuddy]
+import { getCliRuntime } from '@/lib/cli-runtime'; // [CodeBuddy]
 
 export async function GET() {
   try {
@@ -44,6 +46,18 @@ export async function GET() {
           }
         } catch {
           // CLI not found — continue to fallback
+        }
+
+        // [CodeBuddy] Also check CodeBuddy CLI — when runtime is 'codebuddy', it's a valid provider
+        if (provider === 'not-configured') {
+          try {
+            const cbBinary = findCodeBuddyBinary();
+            if (cbBinary) {
+              provider = 'completed';
+            }
+          } catch {
+            // CodeBuddy CLI not found — continue to fallback
+          }
         }
 
         if (provider === 'not-configured') {

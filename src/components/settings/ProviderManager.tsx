@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SpinnerGap, PencilSimple, Stethoscope } from "@/components/ui/icon";
+import { cn } from "@/lib/utils";
 import { ProviderForm } from "./ProviderForm";
 import { ProviderDoctorDialog } from "./ProviderDoctorDialog";
 import type { ProviderFormData } from "./ProviderForm";
@@ -52,6 +53,48 @@ export function ProviderManager() {
   const [envDetected, setEnvDetected] = useState<Record<string, string>>({});
   const { t } = useTranslation();
   const isZh = t('nav.chats') === '对话';
+
+  // [CodeBuddy] Active CLI runtime + CodeBuddy connection status
+  const [activeRuntime, setActiveRuntime] = useState<'claude' | 'codebuddy'>('claude');
+  const [runtimeSwitching, setRuntimeSwitching] = useState(false);
+  const [codebuddyStatus, setCodebuddyStatus] = useState<{ connected: boolean; version: string | null }>({ connected: false, version: null });
+
+  useEffect(() => {
+    // Fetch current runtime setting
+    fetch('/api/settings/app')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.settings?.cli_runtime === 'codebuddy') setActiveRuntime('codebuddy');
+      })
+      .catch(() => {});
+    // Fetch CodeBuddy connection status
+    fetch('/api/claude-status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.runtimes?.codebuddy) {
+          setCodebuddyStatus({
+            connected: data.runtimes.codebuddy.connected ?? false,
+            version: data.runtimes.codebuddy.version ?? null,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const switchRuntime = useCallback(async (runtime: 'claude' | 'codebuddy') => {
+    if (runtime === activeRuntime || runtimeSwitching) return;
+    setRuntimeSwitching(true);
+    try {
+      const res = await fetch('/api/settings/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { cli_runtime: runtime } }),
+      });
+      if (res.ok) setActiveRuntime(runtime);
+    } catch { /* ignore */ } finally {
+      setRuntimeSwitching(false);
+    }
+  }, [activeRuntime, runtimeSwitching]);
 
   // Edit dialog state — fallback ProviderForm for providers that don't match any preset
   const [formOpen, setFormOpen] = useState(false);
@@ -355,12 +398,60 @@ export function ProviderManager() {
                   )}
                 </div>
               </div>
+              <div className="shrink-0">
+                {activeRuntime === 'claude' ? (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-status-success-foreground border-status-success-border">
+                    {t('provider.runtimeActive' as TranslationKey)}
+                  </Badge>
+                ) : (
+                  <Button variant="outline" size="xs" disabled={runtimeSwitching} onClick={() => switchRuntime('claude')}>
+                    {t('provider.runtimeSwitch' as TranslationKey)}
+                  </Button>
+                )}
+              </div>
             </div>
             <p className="text-[11px] text-muted-foreground ml-[34px] leading-relaxed">
               {t('provider.ccSwitchHint')}
             </p>
             <ProviderOptionsSection providerId="env" showThinkingOptions />
           </div>
+
+          {/* [CodeBuddy] CodeBuddy SDK virtual provider */}
+          {codebuddyStatus.connected && (
+            <div className="border-b border-border/30 pb-2">
+              <div className="flex items-center gap-3 py-2.5 px-1">
+                <div className="shrink-0 w-[22px] flex justify-center">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="24" height="24" rx="6" fill="currentColor" opacity="0.15"/>
+                    <text x="12" y="16" textAnchor="middle" fontSize="12" fontWeight="bold" fill="currentColor">CB</text>
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">CodeBuddy SDK</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-status-success-foreground border-status-success-border">
+                      {codebuddyStatus.version ? `v${codebuddyStatus.version}` : 'SDK'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  {activeRuntime === 'codebuddy' ? (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-status-success-foreground border-status-success-border">
+                      {t('provider.runtimeActive' as TranslationKey)}
+                    </Badge>
+                  ) : (
+                    <Button variant="outline" size="xs" disabled={runtimeSwitching} onClick={() => switchRuntime('codebuddy')}>
+                      {t('provider.runtimeSwitch' as TranslationKey)}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground ml-[34px] leading-relaxed">
+                {t('provider.cbSdkDesc' as TranslationKey)}
+              </p>
+              <ProviderOptionsSection providerId="codebuddy" showThinkingOptions />
+            </div>
+          )}
 
           {/* Connected provider list */}
           {sorted.length > 0 ? (

@@ -170,6 +170,10 @@ const en = {
   'provider.disconnectProvider': 'Disconnect Provider',
   'provider.disconnectConfirm': 'Are you sure you want to disconnect "{name}"? This action cannot be undone.',
   'provider.ccSwitchHint': 'Claude Code configurations added via tools like cc switch may not be readable by CodePilot. We recommend re-adding your provider here.',
+  // [CodeBuddy] runtime switching
+  'provider.runtimeActive': 'Active',
+  'provider.runtimeSwitch': 'Switch',
+  'provider.cbSdkDesc': 'Models powered by locally authenticated CodeBuddy CLI',
   'provider.addProviderSection': 'Add Provider',
   'provider.addProviderDesc': 'Select a provider to connect. Most presets only require an API key.',
 
@@ -302,6 +306,9 @@ const en = {
   'connection.conflict': 'Conflict',
   'connection.conflictWarning': 'Multiple Claude Code installations detected',
   'connection.conflictRemove': 'To remove',
+  // [CodeBuddy] connection status
+  'connection.cbNotInstalled': 'CodeBuddy CLI is not installed or not available in PATH.',
+  'connection.cbInstallTitle': 'Install CodeBuddy',
 
   // ── Install wizard ──────────────────────────────────────────
   'install.title': 'Install Claude Code',

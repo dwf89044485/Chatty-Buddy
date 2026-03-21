@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { findClaudeBinary, getClaudeVersion, findAllClaudeBinaries, classifyClaudePath, isWindows, findGitBash } from '@/lib/platform';
+import { findClaudeBinary, getClaudeVersion, findAllClaudeBinaries, classifyClaudePath, isWindows, findGitBash, findCodeBuddyBinary, getCodeBuddyVersion } from '@/lib/platform'; // [CodeBuddy] added findCodeBuddyBinary, getCodeBuddyVersion
 import type { ClaudeInstallInfo } from '@/lib/platform';
+import { getCliRuntime } from '@/lib/cli-runtime'; // [CodeBuddy]
 
 /** Minimum CLI versions for optional features */
 const FEATURE_MIN_VERSIONS: Record<string, string> = {
@@ -64,6 +65,15 @@ export async function GET() {
       warnings.push(`${otherInstalls.length} other Claude CLI installation(s) detected`);
     }
 
+    // [CodeBuddy] CodeBuddy status — lightweight: only call findCodeBuddyBinary() which is
+    // TTL-cached. Skip findAllCodeBuddyBinaries() (expensive full-scan) to avoid
+    // blocking the status endpoint on machines without CodeBuddy installed.
+    const cbPath = findCodeBuddyBinary();
+    let cbVersion: string | null = null;
+    if (cbPath) {
+      cbVersion = await getCodeBuddyVersion(cbPath);
+    }
+
     return NextResponse.json({
       // connected = CLI found and returns a version. Git Bash missing is a
       // warning, not a blocker — the CLI itself is still usable for basic ops.
@@ -75,8 +85,22 @@ export async function GET() {
       missingGit,
       warnings,
       features,
+      // [CodeBuddy] Runtime and dual-runtime status
+      runtime: getCliRuntime(),
+      runtimes: {
+        claude: {
+          connected: !!version,
+          version,
+          binaryPath: claudePath || null,
+        },
+        codebuddy: {
+          connected: !!cbVersion,
+          version: cbVersion,
+          binaryPath: cbPath || null,
+        },
+      },
     });
   } catch {
-    return NextResponse.json({ connected: false, version: null, binaryPath: null, installType: null, otherInstalls: [], missingGit: false, warnings: [], features: {} });
+    return NextResponse.json({ connected: false, version: null, binaryPath: null, installType: null, otherInstalls: [], missingGit: false, warnings: [], features: {}, runtime: getCliRuntime(), runtimes: { claude: { connected: false, version: null }, codebuddy: { connected: false, version: null } } });
   }
 }

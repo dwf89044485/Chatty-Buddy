@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { streamClaude } from '@/lib/claude-client';
+import { streamCodeBuddy } from '@/lib/codebuddy-client'; // [CodeBuddy]
+import { getCliRuntime, setRuntimeSessionId } from '@/lib/cli-runtime'; // [CodeBuddy]
 import { addMessage, getMessages, getSession, updateSessionTitle, updateSdkSessionId, updateSessionModel, updateSessionProvider, updateSessionProviderId, getSetting, acquireSessionLock, renewSessionLock, releaseSessionLock, setSessionRuntimeStatus, syncSdkTasks } from '@/lib/db';
 import { resolveProvider as resolveProviderUnified } from '@/lib/provider-resolver';
 import { notifySessionStart, notifySessionComplete, notifySessionError } from '@/lib/telegram-bot';
@@ -356,15 +358,19 @@ Start by greeting the user and asking the first question.
     // even when settingSources skips 'user' (custom provider scenario).
     const mcpServers = loadMcpServers();
 
-    // Stream Claude response, using SDK session ID for resume if available
-    console.log('[chat API] streamClaude params:', {
+    // Stream response using the active CLI runtime
+    const cliRuntime = getCliRuntime();
+    console.log('[chat API] stream params:', {
+      runtime: cliRuntime,
       promptLength: content.length,
       promptFirst200: content.slice(0, 200),
       sdkSessionId: session.sdk_session_id || 'none',
       systemPromptLength: finalSystemPrompt?.length || 0,
       systemPromptFirst200: finalSystemPrompt?.slice(0, 200) || 'none',
     });
-    const stream = streamClaude({
+
+    const streamFn = cliRuntime === 'codebuddy' ? streamCodeBuddy : streamClaude;
+    const stream = streamFn({
       prompt: content,
       sessionId: session_id,
       sdkSessionId: session.sdk_session_id || undefined,
@@ -430,6 +436,17 @@ Start by greeting the user and asking the first question.
       headers: { 'Content-Type': 'application/json' },
     });
   }
+}
+
+// [CodeBuddy] Persist a new SDK session_id using runtime-aware JSON storage.
+// Reads the current shared blob, updates the active runtime's slot, and writes back.
+// This avoids clobbering the other runtime's session ID.
+function persistRuntimeSessionId(sessionId: string, newSdkSessionId: string): void {
+  const currentSession = getSession(sessionId);
+  const raw = currentSession?.sdk_session_id || '';
+  const rt = getCliRuntime();
+  const updated = setRuntimeSessionId(raw, rt, newSdkSessionId);
+  updateSdkSessionId(sessionId, updated);
 }
 
 async function collectStreamResponse(
@@ -508,7 +525,7 @@ async function collectStreamResponse(
               try {
                 const statusData = JSON.parse(event.data);
                 if (statusData.session_id) {
-                  updateSdkSessionId(sessionId, statusData.session_id);
+                  persistRuntimeSessionId(sessionId, statusData.session_id); // [CodeBuddy]
                 }
                 if (statusData.model) {
                   updateSessionModel(sessionId, statusData.model);
@@ -540,7 +557,7 @@ async function collectStreamResponse(
                 }
                 // Also capture session_id from result if we missed it from init
                 if (resultData.session_id) {
-                  updateSdkSessionId(sessionId, resultData.session_id);
+                  persistRuntimeSessionId(sessionId, resultData.session_id); // [CodeBuddy]
                 }
               } catch {
                 // skip malformed result data

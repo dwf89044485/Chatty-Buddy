@@ -167,6 +167,10 @@ const zh: Record<TranslationKey, string> = {
   'provider.disconnectProvider': '断开提供商',
   'provider.disconnectConfirm': '确定要断开"{name}"吗？此操作无法撤销。',
   'provider.ccSwitchHint': '通过类似 cc switch 等工具添加的 Claude Code 配置可能无法被 CodePilot 读取，建议在此处重新添加。',
+  // [CodeBuddy] 运行时切换
+  'provider.runtimeActive': '使用中',
+  'provider.runtimeSwitch': '切换至此',
+  'provider.cbSdkDesc': '通过本地已登录的 CodeBuddy CLI 提供模型服务',
   'provider.addProviderSection': '添加提供商',
   'provider.addProviderDesc': '选择要连接的提供商。大多数预设只需填写 API 密钥。',
 
@@ -299,6 +303,9 @@ const zh: Record<TranslationKey, string> = {
   'connection.conflict': '版本冲突',
   'connection.conflictWarning': '检测到多个 Claude Code 安装',
   'connection.conflictRemove': '卸载方式',
+  // [CodeBuddy] 连接状态
+  'connection.cbNotInstalled': 'CodeBuddy CLI 未安装或不在 PATH 中。',
+  'connection.cbInstallTitle': '安装 CodeBuddy',
 
   // ── Install wizard ──────────────────────────────────────────
   'install.title': '安装 Claude Code',

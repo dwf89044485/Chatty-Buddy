@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSetting, setSetting } from '@/lib/db';
+import { getCliRuntime, setCliRuntime, type CliRuntime } from '@/lib/cli-runtime'; // [CodeBuddy]
 
 /**
  * CodePilot app-level settings (stored in SQLite, separate from ~/.claude/settings.json).
@@ -13,6 +14,7 @@ const ALLOWED_KEYS = [
   'generative_ui_enabled',
   'locale',
   'thinking_mode',
+  'cli_runtime',
 ];
 
 export async function GET() {
@@ -29,6 +31,8 @@ export async function GET() {
         }
       }
     }
+    // [CodeBuddy] Include CLI runtime in the response
+    result.cli_runtime = getCliRuntime();
     return NextResponse.json({ settings: result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to read app settings';
@@ -48,6 +52,15 @@ export async function PUT(request: NextRequest) {
     for (const [key, value] of Object.entries(settings)) {
       if (!ALLOWED_KEYS.includes(key)) continue;
       const strValue = String(value ?? '').trim();
+
+      // [CodeBuddy] Special handling for cli_runtime
+      if (key === 'cli_runtime') {
+        if (strValue === 'claude' || strValue === 'codebuddy') {
+          setCliRuntime(strValue as CliRuntime);
+        }
+        continue;
+      }
+
       if (strValue) {
         // Don't overwrite token if user sent the masked version back
         if (key === 'anthropic_auth_token' && strValue.startsWith('***')) {

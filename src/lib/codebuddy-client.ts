@@ -1,27 +1,27 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query } from '@tencent-ai/agent-sdk';
 import type {
-  SDKAssistantMessage,
-  SDKUserMessage,
-  SDKResultMessage,
-  SDKResultSuccess,
-  SDKPartialAssistantMessage,
-  SDKSystemMessage,
-  SDKToolProgressMessage,
+  AssistantMessage,
+  UserMessage,
+  ResultMessage,
+  PartialAssistantMessage,
+  ToolProgressMessage,
+  ErrorMessage,
   Options,
   McpStdioServerConfig,
   McpSSEServerConfig,
   McpHttpServerConfig,
   McpServerConfig,
-} from '@anthropic-ai/claude-agent-sdk';
+  Query,
+} from '@tencent-ai/agent-sdk';
 import type { ClaudeStreamOptions, SSEEvent, TokenUsage, MCPServerConfig, PermissionRequestEvent, FileAttachment } from '@/types';
 import { isImageFile } from '@/types';
 import { registerPendingPermission } from './permission-registry';
 import { registerConversation, unregisterConversation } from './conversation-registry';
 import { captureCapabilities, setCachedPlugins } from './agent-sdk-capabilities';
 import { getSetting, updateSdkSessionId, createPermissionRequest } from './db';
-import { resolveForClaudeCode, toClaudeCodeEnv } from './provider-resolver';
-import { findClaudeBinary, findGitBash, getExpandedPath, invalidateClaudePathCache } from './platform';
-import { getRuntimeSessionId } from './cli-runtime'; // [CodeBuddy] extract Claude session ID from shared JSON blob
+import { resolveForClaudeCode, toCodeBuddyEnv } from './provider-resolver';
+import { findCodeBuddyBinary, findGitBash, getExpandedPath } from './platform';
+import { getRuntimeSessionId, setRuntimeSessionId } from './cli-runtime';
 import { notifyPermissionRequest, notifyGeneric } from './telegram-bot';
 import { classifyError, formatClassifiedError } from './error-classifier';
 import os from 'os';
@@ -33,7 +33,6 @@ import path from 'path';
  * Removes null bytes and control characters that cause spawn EINVAL.
  */
 function sanitizeEnvValue(value: string): string {
-   
   return value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 }
 
@@ -53,6 +52,16 @@ function sanitizeEnv(env: Record<string, string>): Record<string, string> {
   return clean;
 }
 
+let cachedCodeBuddyPath: string | null | undefined;
+
+/**
+ * Invalidate the cached CodeBuddy binary path in this module.
+ * Must be called after installation so the next SDK call picks up the new binary.
+ */
+export function invalidateCodeBuddyClientCache(): void {
+  cachedCodeBuddyPath = undefined; // reset to "not yet looked up"
+}
+
 /**
  * On Windows, npm installs CLI tools as .cmd wrappers that can't be
  * spawned without shell:true. Parse the wrapper to extract the real
@@ -62,19 +71,11 @@ function resolveScriptFromCmd(cmdPath: string): string | undefined {
   try {
     const content = fs.readFileSync(cmdPath, 'utf-8');
     const cmdDir = path.dirname(cmdPath);
-
-    // npm .cmd wrappers typically contain a line like:
-    //   "%~dp0\node_modules\@anthropic-ai\claude-code\cli.js" %*
-    // Match paths containing claude-code or claude-agent and ending in .js
     const patterns = [
-      // Quoted: "%~dp0\...\cli.js"
-      /"%~dp0\\([^"]*claude[^"]*\.js)"/i,
-      // Unquoted: %~dp0\...\cli.js
-      /%~dp0\\(\S*claude\S*\.js)/i,
-      // Quoted with %dp0%: "%dp0%\...\cli.js"
-      /"%dp0%\\([^"]*claude[^"]*\.js)"/i,
+      /"%~dp0\\([^"]*codebuddy[^"]*\.js)"/i,
+      /%~dp0\\(\S*codebuddy\S*\.js)/i,
+      /"%dp0%\\([^"]*codebuddy[^"]*\.js)"/i,
     ];
-
     for (const re of patterns) {
       const m = content.match(re);
       if (m) {
@@ -88,22 +89,26 @@ function resolveScriptFromCmd(cmdPath: string): string | undefined {
   return undefined;
 }
 
-let cachedClaudePath: string | null | undefined;
-
-function findClaudePath(): string | undefined {
-  if (cachedClaudePath !== undefined) return cachedClaudePath || undefined;
-  const found = findClaudeBinary();
-  cachedClaudePath = found ?? null;
-  return found;
-}
-
-/**
- * Invalidate the cached Claude binary path in this module AND in platform.ts.
- * Must be called after installation so the next SDK call picks up the new binary.
- */
-export function invalidateClaudeClientCache(): void {
-  cachedClaudePath = undefined; // reset to "not yet looked up"
-  invalidateClaudePathCache();  // also reset the 60s TTL cache in platform.ts
+function findCodeBuddyPath(): string | undefined {
+  if (cachedCodeBuddyPath !== undefined) return cachedCodeBuddyPath || undefined;
+  const found = findCodeBuddyBinary();
+  if (!found) {
+    cachedCodeBuddyPath = null;
+    return undefined;
+  }
+  // Resolve symlinks so the SDK's path transformation
+  // (bin/codebuddy → dist/codebuddy-headless.js) works correctly.
+  // Without this, npm/nvm symlinks like /usr/local/bin/codebuddy →
+  // …/node_modules/@tencent-ai/codebuddy-code/bin/codebuddy cause the
+  // SDK to look for dist/ next to the symlink instead of the real file.
+  try {
+    const resolved = fs.realpathSync(found);
+    cachedCodeBuddyPath = resolved;
+    return resolved;
+  } catch {
+    cachedCodeBuddyPath = found;
+    return found;
+  }
 }
 
 /**
@@ -179,7 +184,7 @@ function formatSSE(event: SSEEvent): string {
 /**
  * Extract text content from an SDK assistant message
  */
-function extractTextFromMessage(msg: SDKAssistantMessage): string {
+function extractTextFromMessage(msg: AssistantMessage): string {
   const parts: string[] = [];
   for (const block of msg.message.content) {
     if (block.type === 'text') {
@@ -192,7 +197,7 @@ function extractTextFromMessage(msg: SDKAssistantMessage): string {
 /**
  * Extract token usage from an SDK result message
  */
-function extractTokenUsage(msg: SDKResultMessage): TokenUsage | null {
+function extractTokenUsage(msg: ResultMessage): TokenUsage | null {
   if (!msg.usage) return null;
   return {
     input_tokens: msg.usage.input_tokens,
@@ -203,10 +208,6 @@ function extractTokenUsage(msg: SDKResultMessage): TokenUsage | null {
   };
 }
 
-/**
- * Stream Claude responses using the Agent SDK.
- * Returns a ReadableStream of SSE-formatted strings.
- */
 /**
  * Get file paths for non-image attachments. If the file already has a
  * persisted filePath (written by the uploads route), reuse it. Otherwise
@@ -252,7 +253,7 @@ function buildPromptWithHistory(
   ];
   for (const msg of history) {
     // For assistant messages with tool blocks (JSON arrays), extract only the text portions.
-    // Tool-use and tool-result blocks are omitted to avoid Claude parroting them as plain text.
+    // Tool-use and tool-result blocks are omitted to avoid the model parroting them as plain text.
     let content = msg.content;
     if (msg.role === 'assistant' && content.startsWith('[')) {
       try {
@@ -276,101 +277,13 @@ function buildPromptWithHistory(
 }
 
 /**
- * Lightweight text generation via the Claude Code SDK subprocess.
- * Uses the same provider/env resolution as streamClaude but without sessions,
- * MCP, permissions, or conversation history. Suitable for simple tasks like
- * generating tool descriptions.
+ * Stream CodeBuddy responses using the @tencent-ai/agent-sdk.
+ * Returns a ReadableStream of SSE-formatted strings.
+ *
+ * This mirrors streamClaude() but targets the CodeBuddy SDK with its own
+ * binary, env vars, session isolation, and message types.
  */
-export async function generateTextViaSdk(params: {
-  providerId?: string;
-  model?: string;
-  system: string;
-  prompt: string;
-  abortSignal?: AbortSignal;
-}): Promise<string> {
-  const resolved = resolveForClaudeCode(undefined, {
-    providerId: params.providerId,
-  });
-
-  const sdkEnv: Record<string, string> = { ...process.env as Record<string, string> };
-  if (!sdkEnv.HOME) sdkEnv.HOME = os.homedir();
-  if (!sdkEnv.USERPROFILE) sdkEnv.USERPROFILE = os.homedir();
-  sdkEnv.PATH = getExpandedPath();
-  delete sdkEnv.CLAUDECODE;
-
-  if (process.platform === 'win32' && !process.env.CLAUDE_CODE_GIT_BASH_PATH) {
-    const gitBashPath = findGitBash();
-    if (gitBashPath) sdkEnv.CLAUDE_CODE_GIT_BASH_PATH = gitBashPath;
-  }
-
-  const resolvedEnv = toClaudeCodeEnv(sdkEnv, resolved);
-  Object.assign(sdkEnv, resolvedEnv);
-
-  const abortController = new AbortController();
-  if (params.abortSignal) {
-    params.abortSignal.addEventListener('abort', () => abortController.abort());
-  }
-
-  // Auto-timeout after 60s to prevent indefinite hangs
-  const timeoutId = setTimeout(() => abortController.abort(), 60_000);
-
-  const queryOptions: Options = {
-    cwd: os.homedir(),
-    abortController,
-    permissionMode: 'bypassPermissions',
-    allowDangerouslySkipPermissions: true,
-    env: sanitizeEnv(sdkEnv),
-    settingSources: resolved.settingSources as Options['settingSources'],
-    systemPrompt: params.system,
-    maxTurns: 1,
-  };
-
-  if (params.model) {
-    queryOptions.model = params.model;
-  }
-
-  const claudePath = findClaudePath();
-  if (claudePath) {
-    const ext = path.extname(claudePath).toLowerCase();
-    if (ext === '.cmd' || ext === '.bat') {
-      const scriptPath = resolveScriptFromCmd(claudePath);
-      if (scriptPath) queryOptions.pathToClaudeCodeExecutable = scriptPath;
-    } else {
-      queryOptions.pathToClaudeCodeExecutable = claudePath;
-    }
-  }
-
-  const conversation = query({
-    prompt: params.prompt,
-    options: queryOptions,
-  });
-
-  // Iterate through all messages; the last one with type 'result' has the answer
-  let resultText = '';
-  try {
-    for await (const msg of conversation) {
-      if (msg.type === 'result' && 'result' in msg) {
-        resultText = (msg as SDKResultSuccess).result || '';
-      }
-    }
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (abortController.signal.aborted && !(params.abortSignal?.aborted)) {
-      throw new Error('SDK query timed out after 60s');
-    }
-    throw err;
-  }
-
-  clearTimeout(timeoutId);
-
-  if (!resultText) {
-    throw new Error('SDK query returned no result');
-  }
-
-  return resultText;
-}
-
-export function streamClaude(options: ClaudeStreamOptions): ReadableStream<string> {
+export function streamCodeBuddy(options: ClaudeStreamOptions): ReadableStream<string> {
   const {
     prompt,
     sessionId,
@@ -394,58 +307,46 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
     agent,
     enableFileCheckpointing,
     autoTrigger,
-    context1m,
     generativeUI,
   } = options;
 
   return new ReadableStream<string>({
     async start(controller) {
-      // Resolve provider via the unified resolver. The caller may pass an explicit
-      // provider (from resolveProvider().provider), or undefined when 'env' mode is
-      // intended. We do NOT fall back to getActiveProvider() here — that's handled
-      // inside resolveForClaudeCode() only when no resolution was attempted at all.
+      // Resolve provider via the unified resolver (same chain as Claude).
       const resolved = resolveForClaudeCode(options.provider, {
         providerId: options.providerId,
         sessionProviderId: options.sessionProviderId,
       });
 
       try {
-        // Build env for the Claude Code subprocess.
+        // Build env for the CodeBuddy SDK subprocess.
         // Start with process.env (includes user shell env from Electron's loadUserShellEnv).
-        // Then overlay any API config the user set in CodePilot settings (optional).
         const sdkEnv: Record<string, string> = { ...process.env as Record<string, string> };
 
-        // Ensure HOME/USERPROFILE are set so Claude Code can find ~/.claude/commands/
+        // Ensure HOME/USERPROFILE are set so CodeBuddy can find config dirs
         if (!sdkEnv.HOME) sdkEnv.HOME = os.homedir();
         if (!sdkEnv.USERPROFILE) sdkEnv.USERPROFILE = os.homedir();
-        // Ensure SDK subprocess has expanded PATH (consistent with Electron mode)
+        // Ensure SDK subprocess has expanded PATH
         sdkEnv.PATH = getExpandedPath();
 
         // Remove CLAUDECODE env var to prevent "nested session" detection.
-        // When CodePilot is launched from within a Claude Code CLI session
-        // (e.g. during development), the child process inherits this variable
-        // and the SDK refuses to start.
+        // When CodePilot is launched from within a CLI session, the child
+        // process inherits this variable and the SDK refuses to start.
         delete sdkEnv.CLAUDECODE;
 
-        // On Windows, auto-detect Git Bash if not already configured
-        if (process.platform === 'win32' && !process.env.CLAUDE_CODE_GIT_BASH_PATH) {
+        // On Windows, auto-detect Git Bash if not already configured.
+        // CodeBuddy uses CODEBUDDY_CODE_GIT_BASH_PATH (mirrors Claude's pattern).
+        if (process.platform === 'win32' && !process.env.CODEBUDDY_CODE_GIT_BASH_PATH) {
           const gitBashPath = findGitBash();
           if (gitBashPath) {
-            sdkEnv.CLAUDE_CODE_GIT_BASH_PATH = gitBashPath;
+            sdkEnv.CODEBUDDY_CODE_GIT_BASH_PATH = gitBashPath;
           }
         }
 
-        // Build env from resolved provider
-        const resolvedEnv = toClaudeCodeEnv(sdkEnv, resolved);
-        // toClaudeCodeEnv returns a full env — merge back into sdkEnv
-        // (preserves HOME, USERPROFILE, PATH, Git Bash detection set above)
+        // Build env from resolved provider (toCodeBuddyEnv removes
+        // ANTHROPIC_* vars and maps role models to CODEBUDDY_* env vars)
+        const resolvedEnv = toCodeBuddyEnv(sdkEnv, resolved);
         Object.assign(sdkEnv, resolvedEnv);
-
-        // Warn if no credentials found at all
-        if (!resolved.hasCredentials && !sdkEnv.ANTHROPIC_API_KEY && !sdkEnv.ANTHROPIC_AUTH_TOKEN) {
-          console.warn('[claude-client] No API key found: no active provider, no legacy settings, and no ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN in environment');
-        }
-
 
         // Check if dangerously_skip_permissions is enabled globally or per-session
         const globalSkip = getSetting('dangerously_skip_permissions') === 'true';
@@ -459,34 +360,26 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             ? 'bypassPermissions'
             : ((permissionMode as Options['permissionMode']) || 'acceptEdits'),
           env: sanitizeEnv(sdkEnv),
-          // Load settings so the SDK behaves like the CLI (tool permissions,
-          // CLAUDE.md, etc.). When an active provider is configured in
-          // CodePilot, skip 'user' settings because ~/.claude/settings.json
-          // may contain env overrides (ANTHROPIC_BASE_URL, ANTHROPIC_MODEL,
-          // etc.) that would conflict with the provider's configuration.
           settingSources: resolved.settingSources as Options['settingSources'],
         };
 
-        if (skipPermissions) {
-          queryOptions.allowDangerouslySkipPermissions = true;
-        }
+        // Note: CodeBuddy SDK does NOT have allowDangerouslySkipPermissions
 
-        // Find claude binary for packaged app where PATH is limited.
-        // On Windows, npm installs Claude CLI as a .cmd wrapper which cannot
-        // be spawned directly without shell:true. Parse the wrapper to
-        // extract the real .js script path and pass that to the SDK instead.
-        const claudePath = findClaudePath();
-        if (claudePath) {
-          const ext = path.extname(claudePath).toLowerCase();
+        // Find CodeBuddy binary for packaged app where PATH is limited.
+        // On Windows, npm installs CLI as a .cmd wrapper — parse it to
+        // extract the real .js script path (same pattern as claude-client.ts).
+        const codebuddyPath = findCodeBuddyPath();
+        if (codebuddyPath) {
+          const ext = path.extname(codebuddyPath).toLowerCase();
           if (ext === '.cmd' || ext === '.bat') {
-            const scriptPath = resolveScriptFromCmd(claudePath);
+            const scriptPath = resolveScriptFromCmd(codebuddyPath);
             if (scriptPath) {
-              queryOptions.pathToClaudeCodeExecutable = scriptPath;
+              queryOptions.pathToCodebuddyCode = scriptPath;
             } else {
-              console.warn('[claude-client] Could not resolve .js path from .cmd wrapper, falling back to SDK resolution:', claudePath);
+              console.warn('[codebuddy-client] Could not resolve .js path from .cmd wrapper, falling back to SDK resolution:', codebuddyPath);
             }
           } else {
-            queryOptions.pathToClaudeCodeExecutable = claudePath;
+            queryOptions.pathToCodebuddyCode = codebuddyPath;
           }
         }
 
@@ -495,36 +388,22 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
         }
 
         if (systemPrompt) {
-          // Use preset append mode to keep Claude Code's default system prompt
-          // (which includes skills, working directory awareness, etc.)
-          queryOptions.systemPrompt = {
-            type: 'preset',
-            preset: 'claude_code',
-            append: systemPrompt,
-          };
+          // CodeBuddy uses { append: string } or a plain string for system prompt
+          queryOptions.systemPrompt = { append: systemPrompt };
         }
 
         // MCP servers: only pass explicitly provided config (e.g. from CodePilot UI).
-        // User-level MCP config from ~/.claude.json and ~/.claude/settings.json
-        // is now automatically loaded by the SDK via settingSources: ['user', 'project', 'local'].
+        // User-level MCP config is loaded by the SDK via settingSources.
         if (mcpServers && Object.keys(mcpServers).length > 0) {
           queryOptions.mcpServers = toSdkMcpConfig(mcpServers);
         }
 
-        // Widget guidelines: progressive loading strategy.
-        // The system prompt always includes WIDGET_SYSTEM_PROMPT with format rules.
-        // The MCP server (detailed design specs) is only registered when the
-        // conversation likely involves widget generation — detected by keywords in
-        // the user's prompt or existing show-widget output in conversation history.
-        // This avoids SDK tool discovery overhead (~1s) on plain text conversations.
+        // Widget guidelines: progressive loading strategy (same as Claude).
         if (generativeUI !== false) {
           const needsWidgetSpecs = (() => {
             const widgetKeywords = /可视化|图表|流程图|时间线|架构图|对比|visualiz|diagram|chart|flowchart|timeline|infographic|interactive|widget|show-widget|hierarchy|dashboard/i;
-            // Check current prompt
             if (widgetKeywords.test(prompt)) return true;
-            // Check if conversation already has widgets (resume context)
             if (conversationHistory?.some(m => m.content.includes('show-widget'))) return true;
-            // Check system prompt for image/widget agent mode
             if (systemPrompt && widgetKeywords.test(systemPrompt)) return true;
             return false;
           })();
@@ -532,19 +411,23 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           if (needsWidgetSpecs) {
             const { createWidgetMcpServer } = await import('@/lib/widget-guidelines');
             const widgetServer = createWidgetMcpServer();
+            const existingMcp = (typeof queryOptions.mcpServers === 'object' && queryOptions.mcpServers !== null)
+              ? queryOptions.mcpServers as Record<string, McpServerConfig>
+              : {};
             queryOptions.mcpServers = {
-              ...(queryOptions.mcpServers || {}),
+              ...existingMcp,
               'codepilot-widget': widgetServer,
             };
           }
         }
 
-        // Pass through SDK-specific options from ClaudeStreamOptions
+        // Pass through SDK-specific options
         if (thinking) {
           queryOptions.thinking = thinking;
         }
         if (effort) {
-          queryOptions.effort = effort;
+          // CodeBuddy uses 'xhigh' instead of Claude's 'max'
+          queryOptions.effort = effort === 'max' ? 'xhigh' : effort as Options['effort'];
         }
         if (outputFormat) {
           queryOptions.outputFormat = outputFormat;
@@ -553,36 +436,27 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           queryOptions.agents = agents as Options['agents'];
         }
         if (agent) {
-          queryOptions.agent = agent;
+          // CodeBuddy Options doesn't have a top-level 'agent' field;
+          // agent selection is typically done via the agents map + prompt
         }
         if (enableFileCheckpointing) {
           queryOptions.enableFileCheckpointing = true;
         }
-        if (context1m) {
-          queryOptions.betas = [
-            ...(queryOptions.betas || []),
-            'context-1m-2025-08-07',
-          ];
-        }
 
-        // Plugins: loaded by the SDK itself via enabledPlugins in ~/.claude/settings.json.
-        // CodePilot does NOT explicitly inject plugins — the SDK reads settingSources
-        // ['user', 'project', 'local'] and resolves enabledPlugins on its own,
-        // ensuring parity with Claude CLI.
+        // Session resume: extract the CodeBuddy-specific session ID from the
+        // shared sdk_session_id JSON blob.
+        const cbSessionId = getRuntimeSessionId(sdkSessionId, 'codebuddy');
 
-        // Resume session if we have an SDK session ID from a previous conversation turn.
-        // [CodeBuddy] sdk_session_id may be stored as a JSON blob {"claude":"...","codebuddy":"..."}
-        // when dual-runtime is active. Extract the Claude-specific session ID.
-        const claudeSessionId = getRuntimeSessionId(sdkSessionId, 'claude');
         // Pre-check: verify working_directory exists before attempting resume.
-        // Resume depends on session context (cwd/project scope), so if the
-        // original working_directory no longer exists, resume will fail.
-        let shouldResume = !!claudeSessionId;
+        let shouldResume = !!cbSessionId;
         if (shouldResume && workingDirectory && !fs.existsSync(workingDirectory)) {
-          console.warn(`[claude-client] Working directory "${workingDirectory}" does not exist, skipping resume`);
+          console.warn(`[codebuddy-client] Working directory "${workingDirectory}" does not exist, skipping resume`);
           shouldResume = false;
           if (sessionId) {
-            try { updateSdkSessionId(sessionId, ''); } catch { /* best effort */ }
+            try {
+              const clearedRaw = setRuntimeSessionId(sdkSessionId, 'codebuddy', '');
+              updateSdkSessionId(sessionId, clearedRaw);
+            } catch { /* best effort */ }
           }
           controller.enqueue(formatSSE({
             type: 'status',
@@ -595,7 +469,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           }));
         }
         if (shouldResume) {
-          queryOptions.resume = claudeSessionId;
+          queryOptions.resume = cbSessionId;
         }
 
         // Permission handler: sends SSE event and waits for user response
@@ -619,14 +493,14 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             createPermissionRequest({
               id: permissionRequestId,
               sessionId,
-              sdkSessionId: sdkSessionId || '',
+              sdkSessionId: cbSessionId || '',
               toolName,
               toolInput: JSON.stringify(input),
               decisionReason: opts.decisionReason || '',
               expiresAt,
             });
           } catch (e) {
-            console.warn('[claude-client] Failed to persist permission request to DB:', e);
+            console.warn('[codebuddy-client] Failed to persist permission request to DB:', e);
           }
 
           // Send permission_request SSE event to the client
@@ -642,7 +516,6 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           onRuntimeStatusChange?.('waiting_permission');
 
           // Wait for user response (resolved by POST /api/chat/permission)
-          // Store original input so registry can inject updatedInput on allow
           const result = await registerPendingPermission(permissionRequestId, input, opts.signal);
 
           // Restore runtime status after permission resolved
@@ -658,27 +531,20 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           workingDirectory,
         };
 
-        // No queryOptions.hooks — all hook types (Notification, PostToolUse) use
-        // the SDK's hook_callback control_request transport, which fails with
-        // "CLI output was not valid JSON" when the CLI mixes control frames with
-        // normal stdout. Notifications are derived from stream messages instead
-        // (task_notification, result). TodoWrite sync uses tool_use → tool_result.
-
-        // Capture real-time stderr output from Claude Code process
+        // Capture real-time stderr output from CodeBuddy process
         queryOptions.stderr = (data: string) => {
-          // Diagnostic: log raw stderr data length to server console
-          console.log(`[stderr] received ${data.length} bytes, first 200 chars:`, data.slice(0, 200).replace(/[\x00-\x1F\x7F]/g, '?'));
+          console.log(`[codebuddy-stderr] received ${data.length} bytes, first 200 chars:`, data.slice(0, 200).replace(/[\x00-\x1F\x7F]/g, '?'));
           // Strip ANSI escape codes, OSC sequences, and control characters
           // but preserve tabs (\x09) and carriage returns (\x0D)
           const cleaned = data
-            .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')   // CSI sequences (colors, cursor)
+            .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')       // CSI sequences (colors, cursor)
             .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '') // OSC sequences
-            .replace(/\x1B\([A-Z]/g, '')               // Character set selection
-            .replace(/\x1B[=>]/g, '')                   // Keypad mode
+            .replace(/\x1B\([A-Z]/g, '')                   // Character set selection
+            .replace(/\x1B[=>]/g, '')                       // Keypad mode
             .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // Control chars (keep \t \n \r)
-            .replace(/\r\n/g, '\n')                    // Normalize CRLF
-            .replace(/\r/g, '\n')                      // Convert remaining CR to LF
-            .replace(/\n{3,}/g, '\n\n')                // Collapse multiple blank lines
+            .replace(/\r\n/g, '\n')                        // Normalize CRLF
+            .replace(/\r/g, '\n')                          // Convert remaining CR to LF
+            .replace(/\n{3,}/g, '\n\n')                    // Collapse multiple blank lines
             .trim();
           if (cleaned) {
             controller.enqueue(formatSSE({
@@ -691,7 +557,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
         // Build the prompt with file attachments and optional conversation history.
         // When resuming, the SDK has full context so we send the raw prompt.
         // When NOT resuming (fresh or fallback), prepend DB history for context.
-        function buildFinalPrompt(useHistory: boolean): string | AsyncIterable<SDKUserMessage> {
+        function buildFinalPrompt(useHistory: boolean): string | AsyncIterable<UserMessage> {
           const basePrompt = useHistory
             ? buildPromptWithHistory(prompt, conversationHistory)
             : prompt;
@@ -712,11 +578,8 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           }
 
           if (imageFiles.length > 0) {
-            // In imageAgentMode, skip file path references so Claude doesn't
-            // try to use built-in tools to analyze images from disk. It will
-            // see the images via vision (base64 content blocks) and follow the
-            // IMAGE_AGENT_SYSTEM_PROMPT to output image-gen-request blocks.
-            // In normal mode, append disk paths so skills can reference them.
+            // In imageAgentMode, skip file path references so the model doesn't
+            // try to use built-in tools to analyze images from disk.
             const textWithImageRefs = imageAgentMode
               ? textPrompt
               : (() => {
@@ -746,14 +609,14 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
 
             contentBlocks.push({ type: 'text', text: textWithImageRefs });
 
-            const userMessage: SDKUserMessage = {
+            const userMessage: UserMessage = {
               type: 'user',
               message: {
                 role: 'user',
                 content: contentBlocks,
               },
               parent_tool_use_id: null,
-              session_id: claudeSessionId || '', // [CodeBuddy] use extracted Claude session ID
+              session_id: cbSessionId || '',
             };
 
             return (async function* () {
@@ -766,10 +629,9 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
 
         const finalPrompt = buildFinalPrompt(!shouldResume);
 
-        // Try to start the conversation. If resuming a previous session fails
-        // (e.g. stale/corrupt session file, CLI version mismatch), automatically
-        // fall back to starting a fresh conversation without resume.
-        let conversation = query({
+        // Try to start the conversation. If resuming a previous session fails,
+        // automatically fall back to starting a fresh conversation without resume.
+        let conversation: Query = query({
           prompt: finalPrompt,
           options: queryOptions,
         });
@@ -782,20 +644,39 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             const first = await iter.next();
 
             // Re-wrap into an async iterable that yields the first message then the rest
-            conversation = (async function* () {
-              if (!first.done) yield first.value;
-              while (true) {
-                const next = await iter.next();
-                if (next.done) break;
-                yield next.value;
-              }
-            })() as ReturnType<typeof query>;
+            const originalConversation = conversation;
+            conversation = Object.assign(
+              (async function* () {
+                if (!first.done) yield first.value;
+                while (true) {
+                  const next = await iter.next();
+                  if (next.done) break;
+                  yield next.value;
+                }
+              })(),
+              {
+                interrupt: originalConversation.interrupt.bind(originalConversation),
+                setPermissionMode: originalConversation.setPermissionMode.bind(originalConversation),
+                setModel: originalConversation.setModel.bind(originalConversation),
+                setMaxThinkingTokens: originalConversation.setMaxThinkingTokens.bind(originalConversation),
+                supportedCommands: originalConversation.supportedCommands.bind(originalConversation),
+                supportedModels: originalConversation.supportedModels.bind(originalConversation),
+                mcpServerStatus: originalConversation.mcpServerStatus.bind(originalConversation),
+                accountInfo: originalConversation.accountInfo.bind(originalConversation),
+                streamInput: originalConversation.streamInput.bind(originalConversation),
+                return: originalConversation.return.bind(originalConversation),
+                throw: originalConversation.throw.bind(originalConversation),
+              },
+            ) as unknown as Query;
           } catch (resumeError) {
             const errMsg = resumeError instanceof Error ? resumeError.message : String(resumeError);
-            console.warn('[claude-client] Resume failed, retrying without resume:', errMsg);
-            // Clear stale sdk_session_id so future messages don't retry this broken resume
+            console.warn('[codebuddy-client] Resume failed, retrying without resume:', errMsg);
+            // Clear stale session ID so future messages don't retry this broken resume
             if (sessionId) {
-              try { updateSdkSessionId(sessionId, ''); } catch { /* best effort */ }
+              try {
+                const clearedRaw = setRuntimeSessionId(sdkSessionId, 'codebuddy', '');
+                updateSdkSessionId(sessionId, clearedRaw);
+              } catch { /* best effort */ }
             }
             // Notify frontend about the fallback
             controller.enqueue(formatSSE({
@@ -816,18 +697,18 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           }
         }
 
-        registerConversation(sessionId, conversation);
-
-        // Fire-and-forget: capture SDK capabilities for UI consumption
-        // Scope to provider so different providers don't pollute each other's cache
-        const capProviderId = resolved.provider?.api_key ? resolved.provider.id || 'custom' : 'env';
-        captureCapabilities(sessionId, conversation, capProviderId).catch((err) => {
-          console.warn('[claude-client] Capability capture failed:', err);
+        // Fire-and-forget: capture SDK capabilities (models, commands, etc.)
+        // Scoped to 'codebuddy' provider ID so it doesn't collide with Claude's cache.
+        captureCapabilities(sessionId, conversation, 'codebuddy').catch((err) => {
+          console.warn('[codebuddy-client] Capability capture failed:', err);
         });
+
+        registerConversation(sessionId, conversation);
 
         let tokenUsage: TokenUsage | null = null;
         // Track pending TodoWrite tool_use_ids so we can sync after successful execution
         const pendingTodoWrites = new Map<string, Array<{ content: string; status: string; activeForm?: string }>>();
+
         for await (const message of conversation) {
           if (abortController?.signal.aborted) {
             break;
@@ -835,11 +716,10 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
 
           switch (message.type) {
             case 'assistant': {
-              const assistantMsg = message as SDKAssistantMessage;
+              const assistantMsg = message as AssistantMessage;
               // Text deltas are handled by stream_event for real-time streaming.
               // Here we only process tool_use blocks.
 
-              // Check for tool use blocks
               for (const block of assistantMsg.message.content) {
                 if (block.type === 'tool_use') {
                   controller.enqueue(formatSSE({
@@ -861,7 +741,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
                         pendingTodoWrites.set(block.id, toolInput.todos);
                       }
                     } catch (e) {
-                      console.warn('[claude-client] Failed to parse TodoWrite input:', e);
+                      console.warn('[codebuddy-client] Failed to parse TodoWrite input:', e);
                     }
                   }
                 }
@@ -871,7 +751,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
 
             case 'user': {
               // Tool execution results come back as user messages with tool_result blocks
-              const userMsg = message as SDKUserMessage;
+              const userMsg = message as UserMessage;
               const content = userMsg.message.content;
               if (Array.isArray(content)) {
                 for (const block of content) {
@@ -879,9 +759,9 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
                     const resultContent = typeof block.content === 'string'
                       ? block.content
                       : Array.isArray(block.content)
-                        ? block.content
-                            .filter((c: { type: string }) => c.type === 'text')
-                            .map((c: { text?: string }) => c.text)
+                        ? (block.content as Array<{ type: string; text?: string }>)
+                            .filter((c) => c.type === 'text')
+                            .map((c) => c.text)
                             .join('\n')
                         : String(block.content ?? '');
                     controller.enqueue(formatSSE({
@@ -916,7 +796,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
 
               // Emit rewind_point for file checkpointing — only for prompt-level
               // user messages (parent_tool_use_id === null), and skip auto-trigger
-              // turns which are invisible to the user (onboarding/check-in).
+              // turns which are invisible to the user.
               if (
                 userMsg.parent_tool_use_id === null &&
                 !autoTrigger &&
@@ -931,7 +811,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             }
 
             case 'stream_event': {
-              const streamEvent = message as SDKPartialAssistantMessage;
+              const streamEvent = message as PartialAssistantMessage;
               const evt = streamEvent.event;
               if (evt.type === 'content_block_delta' && 'delta' in evt) {
                 const delta = evt.delta;
@@ -943,16 +823,12 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             }
 
             case 'system': {
-              const sysMsg = message as SDKSystemMessage;
+              // CodeBuddy SystemMessage has same shape as Claude's SDKSystemMessage.
+              // The union includes CompactBoundaryMessage and StatusMessage which lack
+              // model/tools, so cast through unknown.
+              const sysMsg = message as unknown as { type: 'system'; subtype: string; session_id: string; model: string; tools: string[]; [key: string]: unknown };
               if ('subtype' in sysMsg) {
                 if (sysMsg.subtype === 'init') {
-                  const initMsg = sysMsg as SDKSystemMessage & {
-                    slash_commands?: unknown;
-                    skills?: unknown;
-                    plugins?: Array<{ name: string; path: string }>;
-                    mcp_servers?: unknown;
-                    output_style?: string;
-                  };
                   controller.enqueue(formatSSE({
                     type: 'status',
                     data: JSON.stringify({
@@ -960,22 +836,28 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
                       model: sysMsg.model,
                       requested_model: model,
                       tools: sysMsg.tools,
-                      slash_commands: initMsg.slash_commands,
-                      skills: initMsg.skills,
-                      plugins: initMsg.plugins,
-                      mcp_servers: initMsg.mcp_servers,
-                      output_style: initMsg.output_style,
+                      slash_commands: sysMsg.slash_commands,
+                      skills: sysMsg.skills,
+                      plugins: sysMsg.plugins,
+                      mcp_servers: sysMsg.mcp_servers,
+                      output_style: sysMsg.output_style,
                     }),
                   }));
 
-                  // Cache loaded plugins from init meta for cross-reference in skills route.
-                  // Always set — including empty array — so stale data from a previous
-                  // session that had plugins doesn't leak into a session without plugins.
-                  // capProviderId is defined at line 786 in the same scope.
-                  setCachedPlugins(capProviderId, Array.isArray(initMsg.plugins) ? initMsg.plugins : []);
+                  // Persist the CodeBuddy session ID into the shared JSON blob
+                  if (sysMsg.session_id && sessionId) {
+                    try {
+                      const newRaw = setRuntimeSessionId(sdkSessionId, 'codebuddy', sysMsg.session_id);
+                      updateSdkSessionId(sessionId, newRaw);
+                    } catch {
+                      // best effort
+                    }
+                  }
+
+                  // Cache loaded plugins from init (same as Claude)
+                  setCachedPlugins('codebuddy', Array.isArray(sysMsg.plugins) ? sysMsg.plugins as Array<{ name: string; path: string }> : []);
                 } else if (sysMsg.subtype === 'status') {
-                  // SDK sends status messages when permission mode changes (e.g. ExitPlanMode)
-                  const statusMsg = sysMsg as SDKSystemMessage & { permissionMode?: string };
+                  const statusMsg = sysMsg as typeof sysMsg & { permissionMode?: string };
                   if (statusMsg.permissionMode) {
                     controller.enqueue(formatSSE({
                       type: 'mode_changed',
@@ -983,8 +865,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
                     }));
                   }
                 } else if (sysMsg.subtype === 'task_notification') {
-                  // Agent task completed/failed/stopped — surface as notification
-                  const taskMsg = sysMsg as SDKSystemMessage & {
+                  const taskMsg = sysMsg as typeof sysMsg & {
                     status: string; summary: string; task_id: string;
                   };
                   const title = taskMsg.status === 'completed' ? 'Task completed' : `Task ${taskMsg.status}`;
@@ -1003,7 +884,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             }
 
             case 'tool_progress': {
-              const progressMsg = message as SDKToolProgressMessage;
+              const progressMsg = message as ToolProgressMessage;
               controller.enqueue(formatSSE({
                 type: 'tool_output',
                 data: JSON.stringify({
@@ -1028,8 +909,19 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             }
 
             case 'result': {
-              const resultMsg = message as SDKResultMessage;
+              const resultMsg = message as ResultMessage;
               tokenUsage = extractTokenUsage(resultMsg);
+
+              // Persist the session ID from the result for future resume
+              if (resultMsg.session_id && sessionId) {
+                try {
+                  const newRaw = setRuntimeSessionId(sdkSessionId, 'codebuddy', resultMsg.session_id);
+                  updateSdkSessionId(sessionId, newRaw);
+                } catch {
+                  // best effort
+                }
+              }
+
               controller.enqueue(formatSSE({
                 type: 'result',
                 data: JSON.stringify({
@@ -1041,7 +933,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
                   session_id: resultMsg.session_id,
                 }),
               }));
-              // Notify on conversation-level errors (e.g. rate limit, auth failure)
+              // Notify on conversation-level errors
               if (resultMsg.is_error) {
                 const errTitle = 'Conversation error';
                 const errMsg = resultMsg.subtype || 'The conversation ended with an error';
@@ -1051,6 +943,25 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
                 }));
                 notifyGeneric(errTitle, errMsg, telegramOpts).catch(() => {});
               }
+              break;
+            }
+
+            case 'error': {
+              // CodeBuddy-specific ErrorMessage type
+              const errorMsg = message as ErrorMessage;
+              console.error('[codebuddy-client] SDK error message:', errorMsg.error);
+              controller.enqueue(formatSSE({
+                type: 'error',
+                data: JSON.stringify({
+                  category: 'PROCESS_CRASH',
+                  userMessage: errorMsg.error || 'An error occurred in CodeBuddy SDK',
+                  actionHint: 'Try sending your message again.',
+                  retryable: true,
+                  providerName: 'CodeBuddy SDK',
+                  rawMessage: errorMsg.error,
+                  _formattedMessage: errorMsg.error,
+                }),
+              }));
               break;
             }
 
@@ -1067,9 +978,8 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
         controller.close();
       } catch (error) {
         const rawMessage = error instanceof Error ? error.message : 'Unknown error';
-        // Log full error details for debugging (visible in terminal / dev tools)
         const stderrContent = error instanceof Error ? (error as { stderr?: string }).stderr : undefined;
-        console.error('[claude-client] Stream error:', {
+        console.error('[codebuddy-client] Stream error:', {
           message: rawMessage,
           stack: error instanceof Error ? error.stack : undefined,
           cause: error instanceof Error ? (error as { cause?: unknown }).cause : undefined,
@@ -1081,16 +991,14 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
         const classified = classifyError({
           error,
           stderr: stderrContent,
-          providerName: resolved.provider?.name,
+          providerName: 'CodeBuddy SDK',
           baseUrl: resolved.provider?.base_url,
           hasImages: files && files.some(f => isImageFile(f.type)),
           thinkingEnabled: !!thinking,
-          context1mEnabled: !!context1m,
+          context1mEnabled: false,
           effortSet: !!effort,
         });
 
-        // Send structured error JSON so frontend can parse category + hints
-        // Falls back gracefully for older frontends that only read raw text
         const errorMessage = formatClassifiedError(classified);
         controller.enqueue(formatSSE({
           type: 'error',
@@ -1102,20 +1010,17 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
             providerName: classified.providerName,
             details: classified.details,
             rawMessage: classified.rawMessage,
-            // Include formatted text for backward compatibility
             _formattedMessage: errorMessage,
           }),
         }));
         controller.enqueue(formatSSE({ type: 'done', data: '' }));
 
         // Always clear sdk_session_id on crash so the next message starts fresh.
-        // Even for fresh sessions — the SDK may emit a session_id via status
-        // event before crashing, which gets persisted by consumeStream/SSE
-        // handlers. Leaving it would cause repeated resume failures.
         if (sessionId) {
           try {
-            updateSdkSessionId(sessionId, '');
-            console.warn('[claude-client] Cleared stale sdk_session_id for session', sessionId);
+            const clearedRaw = setRuntimeSessionId(sdkSessionId, 'codebuddy', '');
+            updateSdkSessionId(sessionId, clearedRaw);
+            console.warn('[codebuddy-client] Cleared stale sdk_session_id for session', sessionId);
           } catch {
             // best effort
           }
