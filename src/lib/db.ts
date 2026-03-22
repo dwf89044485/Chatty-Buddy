@@ -613,6 +613,9 @@ function migrateDb(db: Database.Database): void {
       db.prepare(
         'INSERT INTO api_providers (id, name, provider_type, base_url, api_key, is_active, sort_order, extra_env, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).run(id, 'Default', 'anthropic', baseUrlRow?.value || '', tokenRow?.value || '', 1, 0, '{}', 'Migrated from settings', now, now);
+      // Clean up source settings to prevent re-creating this provider on every restart
+      db.prepare("DELETE FROM settings WHERE key = 'anthropic_auth_token'").run();
+      db.prepare("DELETE FROM settings WHERE key = 'anthropic_base_url'").run();
     }
   }
 
