@@ -376,11 +376,6 @@ const en = {
 
   // ── Update ─────────────────────────────────────────────────
   'update.newVersionAvailable': 'New Version Available',
-  'update.downloading': 'Downloading',
-  'update.restartToUpdate': 'Restart to Update',
-  'update.restartNow': 'Restart Now',
-  'update.readyToInstall': 'CodePilot v{version} is ready — restart to update',
-  'update.installUpdate': 'Download & Install',
   'update.later': 'Later',
 
   // ── Image Generation ──────────────────────────────────────

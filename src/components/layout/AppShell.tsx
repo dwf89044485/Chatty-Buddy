@@ -7,7 +7,6 @@ import { NavRail } from "./NavRail";
 import { ChatListPanel } from "./ChatListPanel";
 import { ResizeHandle } from "./ResizeHandle";
 import { UpdateDialog } from "./UpdateDialog";
-import { UpdateBanner } from "./UpdateBanner";
 import { UnifiedTopBar } from "./UnifiedTopBar";
 import { PanelZone } from "./PanelZone";
 import { PanelContext, type PreviewViewMode } from "@/hooks/usePanel";
@@ -420,7 +419,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               chatListOpen={chatListOpen}
               onToggleChatList={() => setChatListOpen(!chatListOpen)}
               hasUpdate={updateContextValue.updateInfo?.updateAvailable ?? false}
-              readyToInstall={updateContextValue.updateInfo?.readyToInstall ?? false}
               skipPermissionsActive={skipPermissionsActive}
             />
             <ErrorBoundary>
@@ -431,7 +429,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <UnifiedTopBar />
-              <UpdateBanner />
               <div className="flex flex-1 min-h-0 overflow-hidden">
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                   <main className="relative flex-1 overflow-hidden">

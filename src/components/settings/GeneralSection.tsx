@@ -26,12 +26,9 @@ import { StatusBanner } from "@/components/patterns/StatusBanner";
 import { AppearanceSection } from "./AppearanceSection";
 
 function UpdateCard() {
-  const { updateInfo, checking, checkForUpdates, downloadUpdate, quitAndInstall, setShowDialog } = useUpdate();
+  const { updateInfo, checking, checkForUpdates, setShowDialog } = useUpdate();
   const { t } = useTranslation();
   const currentVersion = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0";
-
-  const isDownloading = updateInfo?.isNativeUpdate && !updateInfo.readyToInstall
-    && updateInfo.downloadProgress != null;
 
   return (
     <SettingsCard>
@@ -41,21 +38,10 @@ function UpdateCard() {
           <p className="text-xs text-muted-foreground">{t('settings.version', { version: currentVersion })}</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Show install/restart button when update available */}
           {updateInfo?.updateAvailable && !checking && (
-            updateInfo.readyToInstall ? (
-              <Button size="sm" onClick={quitAndInstall}>
-                {t('update.restartToUpdate')}
-              </Button>
-            ) : updateInfo.isNativeUpdate && !isDownloading ? (
-              <Button size="sm" onClick={downloadUpdate}>
-                {t('update.installUpdate')}
-              </Button>
-            ) : !updateInfo.isNativeUpdate ? (
-              <Button size="sm" variant="outline" onClick={() => window.open(updateInfo.releaseUrl, "_blank")}>
-                {t('settings.viewRelease')}
-              </Button>
-            ) : null
+            <Button size="sm" variant="outline" onClick={() => window.open(updateInfo.releaseUrl, "_blank")}>
+              {t('settings.viewRelease')}
+            </Button>
           )}
           <Button
             variant="outline"
@@ -79,13 +65,9 @@ function UpdateCard() {
           {updateInfo.updateAvailable ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${updateInfo.readyToInstall ? 'bg-status-success' : isDownloading ? 'bg-status-warning animate-pulse' : 'bg-primary'}`} />
+                <span className="h-2 w-2 rounded-full bg-primary" />
                 <span className="text-sm">
-                  {updateInfo.readyToInstall
-                    ? t('update.readyToInstall', { version: updateInfo.latestVersion })
-                    : isDownloading
-                      ? `${t('update.downloading')} ${Math.round(updateInfo.downloadProgress!)}%`
-                      : t('settings.updateAvailable', { version: updateInfo.latestVersion })}
+                  {t('settings.updateAvailable', { version: updateInfo.latestVersion })}
                 </span>
                 {updateInfo.releaseNotes && (
                   <Button
@@ -98,15 +80,6 @@ function UpdateCard() {
                   </Button>
                 )}
               </div>
-              {/* Download progress bar */}
-              {isDownloading && (
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${Math.min(updateInfo.downloadProgress!, 100)}%` }}
-                  />
-                </div>
-              )}
               {updateInfo.lastError && (
                 <p className="text-xs text-status-error-foreground">
                   {updateInfo.lastError}

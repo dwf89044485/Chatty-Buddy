@@ -26,7 +26,6 @@ interface NavRailProps {
   chatListOpen: boolean;
   onToggleChatList: () => void;
   hasUpdate?: boolean;
-  readyToInstall?: boolean;
   skipPermissionsActive?: boolean;
 }
 
@@ -39,7 +38,7 @@ const navItems = [
   { href: "/bridge", label: "Bridge", icon: WifiHigh },
 ] as const;
 
-export function NavRail({ onToggleChatList, hasUpdate, readyToInstall, skipPermissionsActive }: NavRailProps) {
+export function NavRail({ onToggleChatList, hasUpdate, skipPermissionsActive }: NavRailProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useTranslation();
@@ -146,10 +145,7 @@ export function NavRail({ onToggleChatList, hasUpdate, readyToInstall, skipPermi
                 </Link>
               </Button>
               {hasUpdate && (
-                <span className={cn(
-                  "absolute top-0.5 right-0.5 h-2 w-2 rounded-full",
-                  readyToInstall ? "bg-status-success animate-pulse" : "bg-primary"
-                )} />
+                <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-primary" />
               )}
             </div>
           </TooltipTrigger>

@@ -26,30 +26,6 @@ interface ElectronInstallAPI {
   onProgress: (callback: (data: any) => void) => () => void;
 }
 
-interface UpdateStatusEvent {
-  status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
-  info?: {
-    version: string;
-    releaseNotes?: string | { version: string; note: string }[] | null;
-    releaseName?: string | null;
-    releaseDate?: string;
-  };
-  progress?: {
-    percent: number;
-    bytesPerSecond: number;
-    transferred: number;
-    total: number;
-  };
-  error?: string;
-}
-
-interface ElectronUpdaterAPI {
-  checkForUpdates: () => Promise<unknown>;
-  downloadUpdate: () => Promise<unknown>;
-  quitAndInstall: () => Promise<void>;
-  onStatus: (callback: (data: UpdateStatusEvent) => void) => () => void;
-}
-
 interface ElectronTerminalAPI {
   create: (opts: { id: string; cwd: string; cols: number; rows: number }) => Promise<void>;
   write: (id: string, data: string) => void;
@@ -76,7 +52,6 @@ interface ElectronAPI {
     }) => Promise<{ canceled: boolean; filePaths: string[] }>;
   };
   install: ElectronInstallAPI;
-  updater?: ElectronUpdaterAPI;
   bridge?: {
     isActive: () => Promise<boolean>;
   };

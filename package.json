@@ -63,7 +63,6 @@
     "cmdk": "^1.1.1",
     "discord.js": "^14.25.1",
     "dompurify": "^3.3.3",
-    "electron-updater": "^6.8.3",
     "markdown-it": "^14.1.1",
     "morphdom": "^2.7.8",
     "motion": "^12.33.0",
