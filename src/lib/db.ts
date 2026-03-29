@@ -11,6 +11,8 @@ const dataDir = process.env.CLAUDE_GUI_DATA_DIR || path.join(os.homedir(), '.cod
 const DB_PATH = path.join(dataDir, 'codepilot.db');
 
 let db: Database.Database | null = null;
+let sessionLockCleanupTimer: NodeJS.Timeout | null = null;
+const SESSION_LOCK_CLEANUP_INTERVAL_MS = 30_000;
 
 export function getDb(): Database.Database {
   if (!db) {
@@ -53,6 +55,7 @@ export function getDb(): Database.Database {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     initDb(db);
+    startSessionLockCleanup();
   }
   return db;
 }
@@ -1603,6 +1606,30 @@ export function markContextEventSynced(id: string): void {
 // Session Runtime Lock Operations
 // ==========================================
 
+export function cleanupExpiredSessionLocks(nowArg?: string): number {
+  const db = getDb();
+  const now = nowArg || new Date().toISOString().replace('T', ' ').split('.')[0];
+  const result = db.prepare('DELETE FROM session_runtime_locks WHERE expires_at < ?').run(now);
+  return result.changes;
+}
+
+function startSessionLockCleanup(): void {
+  if (sessionLockCleanupTimer) return;
+
+  sessionLockCleanupTimer = setInterval(() => {
+    try {
+      const removed = cleanupExpiredSessionLocks();
+      if (removed > 0) {
+        console.log(`[db] Cleaned ${removed} expired session runtime lock(s)`);
+      }
+    } catch (err) {
+      console.warn('[db] Failed to cleanup expired session runtime locks:', err);
+    }
+  }, SESSION_LOCK_CLEANUP_INTERVAL_MS);
+
+  sessionLockCleanupTimer.unref?.();
+}
+
 /**
  * Acquire an exclusive lock for a session.
  * Uses SQLite's single-writer guarantee: within a transaction, delete expired
@@ -2118,6 +2145,11 @@ export function markPermissionLinkResolved(permissionRequestId: string): boolean
  * -wal/-shm files are cleaned up properly.
  */
 export function closeDb(): void {
+  if (sessionLockCleanupTimer) {
+    clearInterval(sessionLockCleanupTimer);
+    sessionLockCleanupTimer = null;
+  }
+
   if (db) {
     try {
       db.close();

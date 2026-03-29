@@ -22,7 +22,7 @@ process.env.CLAUDE_GUI_DATA_DIR = tmpDir;
 
 // Use require to avoid top-level await issues with CJS output
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { getDb, closeDb, createSession, getSession } = require('../../lib/db') as typeof import('../../lib/db');
+const { getDb, closeDb, createSession, getSession, cleanupExpiredSessionLocks } = require('../../lib/db') as typeof import('../../lib/db');
 
 describe('closeDb', () => {
   afterEach(() => {
@@ -93,6 +93,30 @@ describe('closeDb', () => {
       const walSize = fs.statSync(walPath).size;
       assert.equal(walSize, 0, 'WAL file should be empty after graceful close');
     }
+  });
+
+  it('should cleanup only expired session runtime locks', () => {
+    const db = getDb();
+    const now = '2026-03-30 00:00:00';
+
+    const expiredSession = createSession('Expired Lock Session');
+    const activeSession = createSession('Active Lock Session');
+
+    db.prepare(
+      'INSERT INTO session_runtime_locks (session_id, lock_id, owner, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(expiredSession.id, 'lock-expired', 'test', '2026-03-29 23:59:59', now, now);
+
+    db.prepare(
+      'INSERT INTO session_runtime_locks (session_id, lock_id, owner, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(activeSession.id, 'lock-active', 'test', '2026-03-30 00:10:00', now, now);
+
+    const removed = cleanupExpiredSessionLocks(now);
+    assert.equal(removed, 1);
+
+    const remaining = db.prepare('SELECT session_id, lock_id FROM session_runtime_locks ORDER BY lock_id').all() as Array<{ session_id: string; lock_id: string }>;
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0].session_id, activeSession.id);
+    assert.equal(remaining[0].lock_id, 'lock-active');
   });
 
   it('cleanup test fixtures', () => {

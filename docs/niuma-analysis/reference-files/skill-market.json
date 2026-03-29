@@ -1,0 +1,878 @@
+{
+  "skills": [
+    {
+      "id": "docx",
+      "name": "docx",
+      "displayName": "DOCX 文档处理",
+      "description": "全面的 Word 文档创建、编辑和分析，支持修订跟踪、评论、格式保留和文本提取。",
+      "category": "writing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📄",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "Word",
+        "文档",
+        "DOCX",
+        "Office"
+      ],
+      "folder": "docx"
+    },
+    {
+      "id": "pdf",
+      "name": "pdf",
+      "displayName": "PDF 文档处理",
+      "description": "全面的 PDF 操作工具包，支持文本和表格提取、创建新 PDF、合并/拆分文档和处理表单。",
+      "category": "writing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📑",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "PDF",
+        "文档",
+        "表单",
+        "提取"
+      ],
+      "folder": "pdf"
+    },
+    {
+      "id": "pptx",
+      "name": "pptx",
+      "displayName": "PPTX 演示文稿处理",
+      "description": "演示文稿创建、编辑和分析。支持创建新演示文稿、修改内容、处理布局、添加评论或备注等。",
+      "category": "writing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📊",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "PowerPoint",
+        "演示文稿",
+        "PPTX",
+        "Office"
+      ],
+      "folder": "pptx"
+    },
+    {
+      "id": "xlsx",
+      "name": "xlsx",
+      "displayName": "XLSX 电子表格处理",
+      "description": "全面的电子表格创建、编辑和分析，支持公式、格式设置、数据分析和可视化。",
+      "category": "writing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📈",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "Excel",
+        "电子表格",
+        "XLSX",
+        "Office"
+      ],
+      "folder": "xlsx"
+    },
+    {
+      "id": "frontend-design",
+      "name": "frontend-design",
+      "displayName": "Frontend Design",
+      "description": "创建独特、生产级别的前端界面，具有高设计质量。适用于构建网页组件、页面、仪表板等。",
+      "category": "development",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🎨",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "前端",
+        "设计",
+        "UI",
+        "React"
+      ],
+      "folder": "frontend-design"
+    },
+    {
+      "id": "web-artifacts-builder",
+      "name": "web-artifacts-builder",
+      "displayName": "Web Artifacts Builder",
+      "description": "使用现代前端技术（React、Tailwind CSS、shadcn/ui）创建复杂的多组件 Claude.ai HTML 工件的工具套件。",
+      "category": "development",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🌐",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "前端",
+        "React",
+        "Artifacts",
+        "HTML"
+      ],
+      "folder": "web-artifacts-builder"
+    },
+    {
+      "id": "mcp-builder",
+      "name": "mcp-builder",
+      "displayName": "MCP Builder",
+      "description": "创建高质量 MCP（Model Context Protocol）服务器的指南，使 LLM 能够通过精心设计的工具与外部服务交互。",
+      "category": "development",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🔧",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "MCP",
+        "服务器",
+        "API",
+        "集成"
+      ],
+      "folder": "mcp-builder"
+    },
+    {
+      "id": "webapp-testing",
+      "name": "webapp-testing",
+      "displayName": "Web App Testing",
+      "description": "使用 Playwright 与本地 Web 应用程序交互和测试的工具包。支持验证前端功能、调试 UI 行为、捕获浏览器截图和查看浏览器日志。",
+      "category": "development",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🧪",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "测试",
+        "Playwright",
+        "自动化",
+        "Web"
+      ],
+      "folder": "webapp-testing"
+    },
+    {
+      "id": "algorithmic-art",
+      "name": "algorithmic-art",
+      "displayName": "Algorithmic Art",
+      "description": "使用 p5.js 和种子随机性创建算法艺术，支持交互式参数探索。用于创建代码艺术、生成艺术、流场或粒子系统。",
+      "category": "design",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🎨",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "算法艺术",
+        "生成艺术",
+        "p5.js",
+        "交互式"
+      ],
+      "folder": "algorithmic-art"
+    },
+    {
+      "id": "canvas-design",
+      "name": "canvas-design",
+      "displayName": "Canvas Design",
+      "description": "使用设计哲学创建精美的视觉艺术作品，输出为 .png 和 .pdf 文档。用于创建海报、艺术作品、设计或其他静态作品。",
+      "category": "design",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🖼️",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "设计",
+        "视觉艺术",
+        "海报",
+        "PDF"
+      ],
+      "folder": "canvas-design"
+    },
+    {
+      "id": "slack-gif-creator",
+      "name": "slack-gif-creator",
+      "displayName": "Slack GIF Creator",
+      "description": "创建针对 Slack 优化的动画 GIF 的知识和工具。提供约束、验证工具和动画概念。",
+      "category": "design",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🎬",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "GIF",
+        "动画",
+        "Slack",
+        "表情符号"
+      ],
+      "folder": "slack-gif-creator"
+    },
+    {
+      "id": "data-analysis",
+      "name": "data-analysis",
+      "displayName": "Data Analysis",
+      "description": "全链路数据分析技能，支持表格(CSV/Excel)、文档(PDF/DOCX/MD)及图像数据的处理。核心工作流强制遵循：安全探查、质量体检、代码执行、结果验证与报告生成。",
+      "category": "analysis",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📊",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "数据分析",
+        "统计",
+        "可视化",
+        "EDA"
+      ],
+      "folder": "data-analysis"
+    },
+    {
+      "id": "theme-factory",
+      "name": "theme-factory",
+      "displayName": "主题工厂",
+      "description": "为文档、演示文稿等作品提供专业的主题样式工具包，包含10种预设主题和自定义主题生成功能。",
+      "category": "document-formatting",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🎨",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "主题",
+        "样式",
+        "格式化",
+        "公文",
+        "文档"
+      ],
+      "folder": "theme-factory"
+    },
+    {
+      "id": "doc-coauthoring",
+      "name": "doc-coauthoring",
+      "displayName": "文档协作撰写",
+      "description": "提供结构化的文档协作撰写工作流，帮助用户高效地创建文档、提案、技术规范、决策文档等结构化内容。通过三个阶段：上下文收集、精炼与结构化、读者测试，确保文档质量。",
+      "category": "writing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📝",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "文档",
+        "协作",
+        "撰写",
+        "格式化",
+        "公文",
+        "提案"
+      ],
+      "folder": "doc-coauthoring"
+    },
+    {
+      "id": "remotion-video",
+      "name": "remotion-video",
+      "displayName": "Remotion 视频生成",
+      "description": "使用 Remotion 框架以编程方式创建视频。Remotion 让你用 React 组件定义视频内容，支持动画、字幕、音乐可视化、3D 视频、教程讲解视频等。适用于程序化视频、批量生成、数据驱动视频、音乐可视化、自动字幕等场景。",
+      "category": "video-generation",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🎬",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "视频",
+        "Remotion",
+        "React",
+        "动画",
+        "3D",
+        "程序化",
+        "音乐可视化"
+      ],
+      "folder": "remotion-video"
+    },
+    {
+      "id": "feishu-doc-reader",
+      "name": "feishu-doc-reader",
+      "displayName": "飞书文档阅读器",
+      "description": "使用飞书开放平台官方 API 读取和提取飞书（Lark）文档内容。",
+      "category": "feishu",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📄",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "飞书",
+        "文档",
+        "阅读",
+        "提取"
+      ],
+      "folder": "feishu-doc-reader"
+    },
+    {
+      "id": "ppocrv5",
+      "name": "ppocrv5",
+      "displayName": "PP-OCRv5 文字识别",
+      "description": "从图像、PDF 或文档中提取文本。支持 URL 和本地文件，具有自适应质量模式，返回包含识别文本、置信度分数和质量指标的结构化 JSON。",
+      "category": "image-processing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🔍",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "OCR",
+        "文字识别",
+        "图像处理",
+        "PDF",
+        "文本提取"
+      ],
+      "folder": "ppocrv5"
+    },
+    {
+      "id": "gemini-image",
+      "name": "gemini-image",
+      "displayName": "Gemini 图像生成",
+      "description": "使用 Google Gemini 的图像生成模型生成图像。支持文生图和图生图，适用于前端开发、文档插图、概念可视化、图标和 UI 资源创建。",
+      "category": "image-processing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🎨",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "图像生成",
+        "AI作画",
+        "Gemini",
+        "文生图",
+        "图生图"
+      ],
+      "folder": "gemini-image"
+    },
+    {
+      "id": "deepl",
+      "name": "deepl",
+      "displayName": "DeepL 翻译",
+      "description": "通过 DeepL API 翻译文本、文档和 XLIFF 文件。支持文本翻译、文档翻译和 XLIFF 文件翻译。",
+      "category": "translation",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🌐",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "翻译",
+        "DeepL",
+        "多语言",
+        "文档翻译"
+      ],
+      "folder": "deepl"
+    },
+    {
+      "id": "claude-skills-zh-cn",
+      "name": "claude-skills-zh-cn",
+      "displayName": "Claude Skills 中文版",
+      "description": "中文版本的 Anthropic Skills 技能集合，包含多个常用技能的中文翻译版本。包含文档处理、设计创意、开发构建等各类技能的中文实现。",
+      "category": "translation",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📚",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "翻译",
+        "中文",
+        "技能集合",
+        "Claude Skills",
+        "中文版"
+      ],
+      "folder": "claude-skills-zh-cn"
+    },
+    {
+      "id": "ffmpeg-usage",
+      "name": "ffmpeg-usage",
+      "displayName": "FFmpeg 视频处理",
+      "description": "全面的视频和音频处理能力，使用 ffmpeg 进行格式转换、分辨率调整、GIF 创建、音频提取、视频编辑、字幕处理等多媒体任务。",
+      "category": "video-generation",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🎥",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "视频",
+        "FFmpeg",
+        "视频处理",
+        "音频处理",
+        "格式转换",
+        "GIF",
+        "视频编辑"
+      ],
+      "folder": "ffmpeg-usage"
+    },
+    {
+      "id": "imagemagick-conversion",
+      "name": "imagemagick-conversion",
+      "displayName": "ImageMagick 图像转换",
+      "description": "使用 ImageMagick 转换和处理图像。涵盖格式转换、调整大小、批量处理、质量调整和图像变换。适用于图像转换、调整大小、ImageMagick、magick 命令、批量图像处理或缩略图生成。",
+      "category": "image-processing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🖼️",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "图像",
+        "ImageMagick",
+        "图像转换",
+        "图像处理",
+        "格式转换",
+        "批量处理",
+        "缩略图"
+      ],
+      "folder": "imagemagick-conversion"
+    },
+    {
+      "id": "long-term-plan",
+      "name": "long-term-plan",
+      "displayName": "长期计划助手",
+      "description": "创建需要持久化管理的长期项目（跨天/跨周）。仅当用户明确提到「长期计划」「长期规划」「创建项目计划」时触发，普通的规划和任务拆解不应触发。",
+      "category": "automation",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📋",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "长期计划",
+        "长期规划",
+        "项目管理"
+      ],
+      "folder": "long-term-plan"
+    },
+    {
+      "id": "brand-guidelines",
+      "name": "brand-guidelines",
+      "displayName": "Anthropic Brand Styling",
+      "description": "Applies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic'...",
+      "category": "design",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🎨",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "Applies",
+        "Anthropic",
+        "official",
+        "brand",
+        "colors"
+      ],
+      "folder": "brand-guidelines"
+    },
+    {
+      "id": "internal-comms",
+      "name": "internal-comms",
+      "displayName": "internal-comms",
+      "description": "A set of resources to help me write all kinds of internal communications, using the formats that my company likes to use。",
+      "category": "other",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📦",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "internal-comms",
+        "set",
+        "of",
+        "resources",
+        "to"
+      ],
+      "folder": "internal-comms"
+    },
+    {
+      "id": "skill-creator",
+      "name": "skill-creator",
+      "displayName": "Skill Creator",
+      "description": "Guide for creating effective skills。",
+      "category": "automation",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🤖",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "skill-creator",
+        "Guide",
+        "for",
+        "creating",
+        "effective"
+      ],
+      "folder": "skill-creator"
+    },
+    {
+      "id": "niuma-help",
+      "name": "niuma-help",
+      "displayName": "牛马AI 引导帮助",
+      "description": "牛马AI 产品使用引导与帮助，解答用户关于功能操作、设置配置等使用问题。",
+      "category": "other",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "📖",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "帮助",
+        "引导",
+        "使用指南",
+        "FAQ",
+        "新手入门"
+      ],
+      "folder": "niuma-help"
+    },
+    {
+      "id": "baoyu-image-gen",
+      "name": "baoyu-image-gen",
+      "displayName": "AI 多模型图片生成",
+      "description": "使用 OpenAI、Google 和 DashScope API 进行 AI 图片生成。支持文生图、参考图片、宽高比设置，可按需并行生成。",
+      "category": "image-processing",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "🖌️",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "图片生成",
+        "AI作画",
+        "OpenAI",
+        "DashScope",
+        "文生图"
+      ],
+      "folder": "baoyu-image-gen"
+    },
+    {
+      "id": "baoyu-compress-image",
+      "name": "baoyu-compress-image",
+      "displayName": "图片智能压缩",
+      "description": "智能压缩图片为 WebP 或 PNG 格式，自动选择最佳工具（sips → cwebp → ImageMagick → Sharp），支持递归目录批量处理。",
+      "category": "image-processing",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "📦",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "图片压缩",
+        "WebP",
+        "批量处理",
+        "优化"
+      ],
+      "folder": "baoyu-compress-image"
+    },
+    {
+      "id": "baoyu-danger-gemini-web",
+      "name": "baoyu-danger-gemini-web",
+      "displayName": "Gemini Web 图文生成",
+      "description": "通过逆向 Gemini Web API 生成图片和文本。支持文生图、图生图、参考图片和多轮对话。",
+      "category": "image-processing",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "✨",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "Gemini",
+        "图片生成",
+        "文生图",
+        "逆向API"
+      ],
+      "folder": "baoyu-danger-gemini-web"
+    },
+    {
+      "id": "baoyu-article-illustrator",
+      "name": "baoyu-article-illustrator",
+      "displayName": "文章智能配图",
+      "description": "分析文章结构，识别需要配图的位置，使用类型×风格二维矩阵生成一致风格的插图。",
+      "category": "image-processing",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "🎯",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "文章配图",
+        "插图",
+        "AI绘图",
+        "内容创作"
+      ],
+      "folder": "baoyu-article-illustrator"
+    },
+    {
+      "id": "baoyu-cover-image",
+      "name": "baoyu-cover-image",
+      "displayName": "文章封面图生成",
+      "description": "生成文章封面图，支持 5 个维度（类型、配色、渲染、文字、氛围）组合 9 种配色方案和 6 种渲染风格。",
+      "category": "image-processing",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "🖼️",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "封面图",
+        "配色方案",
+        "渲染风格",
+        "自媒体"
+      ],
+      "folder": "baoyu-cover-image"
+    },
+    {
+      "id": "baoyu-infographic",
+      "name": "baoyu-infographic",
+      "displayName": "专业信息图生成",
+      "description": "生成专业信息图，提供 20 种布局类型和 17 种视觉风格。分析内容结构，推荐最佳布局×风格组合。",
+      "category": "design",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "📊",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "信息图",
+        "数据可视化",
+        "布局",
+        "设计"
+      ],
+      "folder": "baoyu-infographic"
+    },
+    {
+      "id": "baoyu-comic",
+      "name": "baoyu-comic",
+      "displayName": "知识漫画创作",
+      "description": "创建原创知识漫画，支持多种画风（线条画、漫画、写实、水墨、粉笔）和语调组合，生成详细分镜和角色设定。",
+      "category": "design",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "📖",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "漫画",
+        "知识科普",
+        "分镜",
+        "画风"
+      ],
+      "folder": "baoyu-comic"
+    },
+    {
+      "id": "baoyu-slide-deck",
+      "name": "baoyu-slide-deck",
+      "displayName": "幻灯片图片生成",
+      "description": "将内容生成为专业幻灯片图片，支持 15 种预设风格，可合并为 PowerPoint 或 PDF。",
+      "category": "design",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "📽️",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "幻灯片",
+        "演示文稿",
+        "PPT",
+        "PDF"
+      ],
+      "folder": "baoyu-slide-deck"
+    },
+    {
+      "id": "baoyu-post-to-wechat",
+      "name": "baoyu-post-to-wechat",
+      "displayName": "发布到微信公众号",
+      "description": "通过 API 或 Chrome CDP 发布文章到微信公众号，支持 HTML/Markdown/纯文本和图文消息。",
+      "category": "self-media",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "📢",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "微信",
+        "公众号",
+        "发布",
+        "自媒体"
+      ],
+      "folder": "baoyu-post-to-wechat"
+    },
+    {
+      "id": "baoyu-post-to-x",
+      "name": "baoyu-post-to-x",
+      "displayName": "发布到 X/Twitter",
+      "description": "通过真实 Chrome 浏览器发布内容到 X/Twitter，支持文本、图片、视频、引用推文和长文（X Articles）。",
+      "category": "self-media",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "🐦",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "Twitter",
+        "X",
+        "发帖",
+        "自媒体"
+      ],
+      "folder": "baoyu-post-to-x"
+    },
+    {
+      "id": "baoyu-danger-x-to-markdown",
+      "name": "baoyu-danger-x-to-markdown",
+      "displayName": "X 推文转 Markdown",
+      "description": "将 X/Twitter 推文和长文转换为 Markdown 格式，支持 YAML frontmatter、线程提取和媒体下载。",
+      "category": "self-media",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "📥",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "Twitter",
+        "Markdown",
+        "推文提取",
+        "内容转换"
+      ],
+      "folder": "baoyu-danger-x-to-markdown"
+    },
+    {
+      "id": "baoyu-xhs-images",
+      "name": "baoyu-xhs-images",
+      "displayName": "小红书信息图生成",
+      "description": "生成小红书风格信息图系列，支持 10 种视觉风格和 8 种布局，将内容拆解为 1-10 张卡通风格图片。",
+      "category": "self-media",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "📕",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "小红书",
+        "信息图",
+        "卡通风格",
+        "种草"
+      ],
+      "folder": "baoyu-xhs-images"
+    },
+    {
+      "id": "baoyu-format-markdown",
+      "name": "baoyu-format-markdown",
+      "displayName": "Markdown 格式化",
+      "description": "格式化纯文本或 Markdown 文件，自动添加 frontmatter、标题、摘要、排版优化，修正中英文间距和引号。",
+      "category": "writing",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "✏️",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "Markdown",
+        "格式化",
+        "排版",
+        "中英文间距"
+      ],
+      "folder": "baoyu-format-markdown"
+    },
+    {
+      "id": "baoyu-markdown-to-html",
+      "name": "baoyu-markdown-to-html",
+      "displayName": "Markdown 转 HTML",
+      "description": "将 Markdown 转换为带内联 CSS 的 HTML，专为微信公众号优化。支持代码高亮、数学公式、PlantUML、脚注等。",
+      "category": "writing",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "🔄",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "Markdown",
+        "HTML",
+        "微信公众号",
+        "格式转换"
+      ],
+      "folder": "baoyu-markdown-to-html"
+    },
+    {
+      "id": "baoyu-url-to-markdown",
+      "name": "baoyu-url-to-markdown",
+      "displayName": "网页转 Markdown",
+      "description": "通过 Chrome CDP 抓取网页并转换为干净的 Markdown，支持自动捕获和等待用户登录两种模式。",
+      "category": "writing",
+      "author": "宝玉",
+      "version": "1.0.0",
+      "icon": "🌍",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "网页抓取",
+        "Markdown",
+        "Chrome",
+        "内容提取"
+      ],
+      "folder": "baoyu-url-to-markdown"
+    },
+    {
+      "id": "blog-post-writer",
+      "name": "blog-post-writer",
+      "displayName": "公众号写作助手",
+      "description": "将零散的想法或原始文章转化为指定风格的公众号文章，自动生成配图并图文混排。",
+      "category": "writing",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "✍️",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "公众号",
+        "写作",
+        "文章",
+        "内容创作"
+      ],
+      "folder": "blog-post-writer"
+    },
+    {
+      "id": "workflow-automator",
+      "name": "workflow-automator",
+      "displayName": "自动化工作流",
+      "description": "自动化工作流编排，支持 CI/CD 配置、脚本生成、定时任务和 Git Hooks 设置。",
+      "category": "development",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "⚙️",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "CI/CD",
+        "自动化",
+        "工作流",
+        "脚本"
+      ],
+      "folder": "workflow-automator"
+    },
+    {
+      "id": "project-init",
+      "name": "project-init",
+      "displayName": "项目初始化",
+      "description": "项目初始化引导，从需求拆解到目录结构搭建、技术选型和开发规范建立。",
+      "category": "development",
+      "author": "官方",
+      "version": "1.0.0",
+      "icon": "🚀",
+      "downloads": 0,
+      "rating": 5,
+      "tags": [
+        "项目搭建",
+        "脚手架",
+        "技术选型",
+        "初始化"
+      ],
+      "folder": "project-init"
+    }
+  ]
+}
