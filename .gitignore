@@ -11,6 +11,13 @@ out/
 tsconfig.tsbuildinfo
 next-env.d.ts
 
+# Electron build output
+dist-electron/
+release/
+
+# Agentation bundle (generated at build time)
+public/agentation-bundle.js
+
 # Environment
 .env
 .env.local

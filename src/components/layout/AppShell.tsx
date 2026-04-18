@@ -9,6 +9,7 @@ import { ResizeHandle } from "./ResizeHandle";
 import { UpdateDialog } from "./UpdateDialog";
 import { UnifiedTopBar } from "./UnifiedTopBar";
 import { PanelZone } from "./PanelZone";
+import { BrowserPanel } from "./panels/BrowserPanel";
 import { PanelContext, type PreviewViewMode } from "@/hooks/usePanel";
 import { UpdateContext } from "@/hooks/useUpdate";
 import { useUpdateChecker } from "@/hooks/useUpdateChecker";
@@ -137,6 +138,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+
+  // --- Browser panel state ---
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserUrl, setBrowserUrl] = useState("http://localhost:3000");
+  const [agentationEnabled, setAgentationEnabled] = useState(false);
 
   // --- Git summary (derived from polling hook, no setState needed) ---
   const [currentWorktreeLabel, setCurrentWorktreeLabel] = useState("");
@@ -380,6 +386,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setPreviewOpen,
       terminalOpen,
       setTerminalOpen,
+      browserOpen,
+      setBrowserOpen,
+      browserUrl,
+      setBrowserUrl,
+      agentationEnabled,
+      setAgentationEnabled,
       currentBranch,
       gitDirtyCount,
       currentWorktreeLabel,
@@ -401,7 +413,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       previewViewMode,
       setPreviewViewMode,
     }),
-    [fileTreeOpen, gitPanelOpen, previewOpen, terminalOpen, currentBranch, gitDirtyCount, currentWorktreeLabel, workingDirectory, sessionId, sessionTitle, streamingSessionId, pendingApprovalSessionId, activeStreamingSessions, pendingApprovalSessionIds, previewFile, setPreviewFile, previewViewMode]
+    [fileTreeOpen, gitPanelOpen, previewOpen, terminalOpen, browserOpen, browserUrl, agentationEnabled, currentBranch, gitDirtyCount, currentWorktreeLabel, workingDirectory, sessionId, sessionTitle, streamingSessionId, pendingApprovalSessionId, activeStreamingSessions, pendingApprovalSessionIds, previewFile, setPreviewFile, previewViewMode]
   );
 
   const imageGenValue = useImageGenState();
@@ -427,20 +439,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {chatListOpen && (
               <ResizeHandle side="left" onResize={handleChatListResize} onResizeEnd={handleChatListResizeEnd} />
             )}
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-              <UnifiedTopBar />
-              <div className="flex flex-1 min-h-0 overflow-hidden">
-                <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                  <main className="relative flex-1 overflow-hidden">
-                    {isSplitActive ? (
-                      <SplitChatContainer />
-                    ) : (
-                      <ErrorBoundary>{children}</ErrorBoundary>
-                    )}
-                  </main>
+            {/* Content + panels column: TopBar sits above main, browser is a sibling column */}
+            <div className="flex min-w-0 flex-1 overflow-hidden">
+              {/* Left: TopBar + main + PanelZone stack */}
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                <UnifiedTopBar />
+                <div className="flex flex-1 min-h-0 overflow-hidden">
+                  <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                    <main className="relative flex-1 overflow-hidden">
+                      {isSplitActive ? (
+                        <SplitChatContainer />
+                      ) : (
+                        <ErrorBoundary>{children}</ErrorBoundary>
+                      )}
+                    </main>
+                  </div>
+                  {isChatDetailRoute && <PanelZone />}
                 </div>
-                {isChatDetailRoute && <PanelZone />}
               </div>
+              {/* Right: BrowserPanel — full height, pushes TopBar buttons left */}
+              {browserOpen && <BrowserPanel />}
             </div>
           </div>
           <UpdateDialog />

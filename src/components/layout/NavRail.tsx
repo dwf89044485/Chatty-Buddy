@@ -10,6 +10,7 @@ import {
   Gear,
   WifiHigh,
   Terminal,
+  Globe,
 } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { usePanel } from "@/hooks/usePanel";
 import type { TranslationKey } from "@/i18n";
 
 
@@ -42,6 +44,7 @@ export function NavRail({ onToggleChatList, hasUpdate, skipPermissionsActive }: 
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useTranslation();
+  const { browserOpen, setBrowserOpen } = usePanel();
   const navLabelKeys: Record<string, TranslationKey> = {
     'Chats': 'nav.chats',
     'Skills': 'extensions.skills',
@@ -114,6 +117,25 @@ export function NavRail({ onToggleChatList, hasUpdate, skipPermissionsActive }: 
 
       {/* Bottom: skip-permissions indicator + settings */}
       <div className="mt-auto flex flex-col items-center gap-2">
+        {/* Browser toggle */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-9 w-9",
+                browserOpen && "bg-sidebar-accent text-sidebar-accent-foreground"
+              )}
+              onClick={() => setBrowserOpen(!browserOpen)}
+            >
+              <Globe size={16} weight={browserOpen ? "fill" : "regular"} />
+              <span className="sr-only">{t('browser.title')}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{t('browser.title')}</TooltipContent>
+        </Tooltip>
+
         {skipPermissionsActive && (
           <Tooltip>
             <TooltipTrigger asChild>

@@ -307,6 +307,7 @@ export function streamCodeBuddy(options: ClaudeStreamOptions): ReadableStream<st
     agent,
     enableFileCheckpointing,
     autoTrigger,
+    context1m,
     generativeUI,
   } = options;
 
@@ -384,7 +385,12 @@ export function streamCodeBuddy(options: ClaudeStreamOptions): ReadableStream<st
         }
 
         if (model) {
-          queryOptions.model = model;
+          const context1mModelMap: Record<string, string> = {
+            'claude-sonnet-4.6': 'claude-sonnet-4.6-1m',
+            'claude-opus-4.6': 'claude-opus-4.6-1m',
+          };
+          const resolvedModel = context1m ? (context1mModelMap[model] || model) : model;
+          queryOptions.model = resolvedModel;
         }
 
         if (systemPrompt) {
@@ -628,6 +634,13 @@ export function streamCodeBuddy(options: ClaudeStreamOptions): ReadableStream<st
         }
 
         const finalPrompt = buildFinalPrompt(!shouldResume);
+
+        // Guard against accidental stub installs that export an empty object.
+        if (typeof query !== 'function') {
+          throw new Error(
+            'CodeBuddy SDK query() is unavailable. Detected an invalid @tencent-ai/agent-sdk install (likely stub). Reinstall @tencent-ai/agent-sdk and retry.'
+          );
+        }
 
         // Try to start the conversation. If resuming a previous session fails,
         // automatically fall back to starting a fresh conversation without resume.
@@ -995,7 +1008,7 @@ export function streamCodeBuddy(options: ClaudeStreamOptions): ReadableStream<st
           baseUrl: resolved.provider?.base_url,
           hasImages: files && files.some(f => isImageFile(f.type)),
           thinkingEnabled: !!thinking,
-          context1mEnabled: false,
+          context1mEnabled: !!context1m,
           effortSet: !!effort,
         });
 

@@ -25,6 +25,8 @@ import {
   getRewindPoints,
   respondToPermission,
 } from '@/lib/stream-session-manager';
+import { useAgentationAnnotations } from '@/hooks/useAgentationAnnotations';
+import { AgentationNotification } from './AgentationNotification';
 
 interface ChatViewProps {
   sessionId: string;
@@ -40,6 +42,7 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
   const { setStreamingSessionId, workingDirectory, setPendingApprovalSessionId } = usePanel();
   const { t } = useTranslation();
   const router = useRouter();
+  const { annotations, pendingCount: agentationPendingCount, acknowledge: acknowledgeAnnotation } = useAgentationAnnotations();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [permissionProfile, setPermissionProfile] = useState<'default' | 'full_access'>(initialPermissionProfile || 'default');
 
@@ -407,6 +410,20 @@ export function ChatView({ sessionId, initialMessages = [], initialHasMore = fal
         rewindPoints={rewindPoints}
         sessionId={sessionId}
       />
+      {/* Agentation annotation notifications */}
+      {annotations.filter(a => a.status === 'pending').map((annotation) => (
+        <AgentationNotification
+          key={annotation.id}
+          annotation={annotation}
+          onLetAgentHandle={(a) => {
+            sendMessage(
+              `[Visual Feedback] User annotated element "${a.elementName}" (${a.xpath}):\n\n${a.feedback}\n\nSeverity: ${a.severity}\nPlease review and fix this issue.`
+            );
+            acknowledgeAnnotation(a.id);
+          }}
+          onDismiss={(a) => acknowledgeAnnotation(a.id)}
+        />
+      ))}
       {/* Permission prompt */}
       <PermissionPrompt
         pendingPermission={pendingPermission}

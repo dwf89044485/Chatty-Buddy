@@ -1132,6 +1132,19 @@ const en = {
   'widget.error': 'Widget render error',
   'widget.showCode': 'Show code',
   'widget.hideCode': 'Hide code',
+
+  // ── Browser Panel ──────────────────────────────────────────
+  'browser.title': 'Browser',
+  'browser.back': 'Go back',
+  'browser.forward': 'Go forward',
+  'browser.reload': 'Reload',
+  'browser.devtools': 'Open DevTools',
+  'browser.close': 'Close browser',
+  'browser.agentation': 'Toggle Agentation',
+  'browser.electronOnly': 'Browser requires desktop app',
+  'browser.electronOnlyDesc': 'The embedded browser is only available in the Electron desktop app.',
+  'browser.watchModeOn': 'Watch Mode ON — auto-refresh on file changes',
+  'browser.watchModeOff': 'Enable Watch Mode',
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -29,6 +29,7 @@ import {
 } from "./provider-presets";
 import type { ApiProvider } from "@/types";
 import { useTranslation } from "@/hooks/useTranslation";
+import type { TranslationKey } from "@/i18n";
 import Anthropic from "@lobehub/icons/es/Anthropic";
 import { ProviderOptionsSection } from "./ProviderOptionsSection";
 
@@ -354,7 +355,7 @@ export function ProviderManager() {
               <p className="text-[11px] text-muted-foreground ml-[34px] leading-relaxed">
                 {t('provider.cbSdkDesc' as TranslationKey)}
               </p>
-              <ProviderOptionsSection providerId="codebuddy" showThinkingOptions />
+              <ProviderOptionsSection providerId="codebuddy" />
             </div>
           )}
 

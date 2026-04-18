@@ -1129,6 +1129,19 @@ const zh: Record<TranslationKey, string> = {
   'widget.error': '组件渲染错误',
   'widget.showCode': '显示代码',
   'widget.hideCode': '隐藏代码',
+
+  // ── Browser Panel ──────────────────────────────────────────
+  'browser.title': '浏览器',
+  'browser.back': '后退',
+  'browser.forward': '前进',
+  'browser.reload': '刷新',
+  'browser.devtools': '打开开发者工具',
+  'browser.close': '关闭浏览器',
+  'browser.agentation': '切换 Agentation',
+  'browser.electronOnly': '浏览器需要桌面应用',
+  'browser.electronOnlyDesc': '内嵌浏览器仅在 Electron 桌面应用中可用。',
+  'browser.watchModeOn': '监听模式已开启 — 文件变更时自动刷新',
+  'browser.watchModeOff': '启用监听模式',
 };
 
 export default zh;

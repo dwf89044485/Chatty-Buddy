@@ -1,5 +1,5 @@
 appId: com.codepilot.app
-productName: CodePilot
+productName: ChattyBuddy
 publish:
   provider: github
   owner: dwf89044485

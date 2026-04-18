@@ -520,6 +520,7 @@ function createWindow(url?: string) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   };
 
@@ -1025,6 +1026,24 @@ app.whenReady().then(async () => {
   });
 
   // --- End terminal IPC handlers ---
+
+  // --- Browser panel IPC handlers ---
+  ipcMain.handle('browser:open-devtools', async () => {
+    if (!mainWindow) return;
+    // Find the webview's webContents and open devtools for it
+    const allContents = mainWindow.webContents.mainFrame.framesInSubtree;
+    // The webview guest contents can be found via webContents.getAllWebContents()
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { webContents } = require('electron');
+    const allWc = webContents.getAllWebContents();
+    for (const wc of allWc) {
+      if (wc.getType() === 'webview') {
+        wc.openDevTools();
+        return;
+      }
+    }
+  });
+  // --- End browser panel IPC handlers ---
 
   try {
     let port: number;

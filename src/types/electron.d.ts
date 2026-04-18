@@ -35,6 +35,10 @@ interface ElectronTerminalAPI {
   onExit: (callback: (data: { id: string; code: number }) => void) => () => void;
 }
 
+interface ElectronBrowserAPI {
+  openDevtools: () => Promise<void>;
+}
+
 interface ElectronAPI {
   versions: {
     electron: string;
@@ -55,6 +59,7 @@ interface ElectronAPI {
   bridge?: {
     isActive: () => Promise<boolean>;
   };
+  browser?: ElectronBrowserAPI;
   terminal?: ElectronTerminalAPI;
 }
 

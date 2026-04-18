@@ -17,6 +17,14 @@ export interface PanelContextValue {
   terminalOpen: boolean;
   setTerminalOpen: (open: boolean) => void;
 
+  // --- Browser panel ---
+  browserOpen: boolean;
+  setBrowserOpen: (open: boolean) => void;
+  browserUrl: string;
+  setBrowserUrl: (url: string) => void;
+  agentationEnabled: boolean;
+  setAgentationEnabled: (enabled: boolean) => void;
+
   // --- Git summary (for top bar, derived — no setters) ---
   currentBranch: string;
   gitDirtyCount: number;

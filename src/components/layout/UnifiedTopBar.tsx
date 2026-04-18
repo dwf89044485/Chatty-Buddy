@@ -7,6 +7,7 @@ import {
   TreeStructure,
   PencilSimple,
   DotOutline,
+  Globe,
 } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,8 @@ export function UnifiedTopBar() {
     setGitPanelOpen,
     currentBranch,
     gitDirtyCount,
+    browserOpen,
+    setBrowserOpen,
   } = usePanel();
   const { t } = useTranslation();
   const { isWindows } = useClientPlatform();
@@ -216,6 +219,23 @@ export function UnifiedTopBar() {
               </Tooltip>
             </>
           )}
+
+          {/* Browser panel toggle — always visible */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={browserOpen ? "secondary" : "ghost"}
+                size="icon-sm"
+                className={browserOpen ? "" : "text-muted-foreground hover:text-foreground"}
+                onClick={() => setBrowserOpen(!browserOpen)}
+              >
+                <Globe size={16} weight={browserOpen ? "fill" : "regular"} />
+                <span className="sr-only">{t('browser.title')}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('browser.title')}</TooltipContent>
+          </Tooltip>
+
           {isWindows && <div style={{ width: 138 }} className="shrink-0" />}
         </div>
       </div>

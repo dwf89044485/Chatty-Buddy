@@ -511,6 +511,23 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           queryOptions.mcpServers = toSdkMcpConfig(mcpServers);
         }
 
+        // Agentation MCP: inject if the agentation server is running.
+        // This gives the Claude session access to 9 agentation_* tools for
+        // browsing, annotating, and processing visual feedback.
+        {
+          const { getAgentationPort } = await import('@/lib/agentation-server');
+          const agentationPort = getAgentationPort();
+          if (agentationPort) {
+            queryOptions.mcpServers = {
+              ...(queryOptions.mcpServers || {}),
+              agentation: {
+                type: 'http',
+                url: `http://127.0.0.1:${agentationPort}/mcp`,
+              },
+            };
+          }
+        }
+
         // Widget guidelines: progressive loading strategy.
         // The system prompt always includes WIDGET_SYSTEM_PROMPT with format rules.
         // The MCP server (detailed design specs) is only registered when the
